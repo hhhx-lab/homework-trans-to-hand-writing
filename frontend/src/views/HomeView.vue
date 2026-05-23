@@ -210,6 +210,63 @@
       </div>
     </div>
 
+    <section class="document-converter">
+      <div class="document-converter-header">
+        <h2>文档转手写体</h2>
+        <span>PDF / Word / Markdown</span>
+      </div>
+
+      <div class="document-converter-body">
+        <input
+          type="file"
+          ref="documentFileInput"
+          accept=".pdf,.docx,.md,.markdown"
+          @change="onDocumentFileChange"
+          style="display: none;"
+        />
+
+        <button type="button" class="document-file-button" @click="triggerDocumentFileInput">
+          选择文档
+        </button>
+
+        <span v-if="selectedDocumentFileName" class="document-file-name">
+          {{ selectedDocumentFileName }}
+        </span>
+
+        <button
+          v-if="selectedDocumentFileName"
+          type="button"
+          class="document-clear-button"
+          @click="clearDocumentFile"
+        >
+          清空
+        </button>
+      </div>
+
+      <div class="document-converter-actions">
+        <label>
+          输出格式:
+          <select v-model="documentOutputFormat">
+            <option value="pdf">PDF</option>
+            <option value="docx">Word</option>
+          </select>
+        </label>
+
+        <button
+          type="button"
+          class="document-convert-button"
+          :disabled="!documentFile || isConvertingDocument"
+          @click="convertHandwrittenDocument"
+        >
+          {{ isConvertingDocument ? '转换中...' : '转换并下载' }}
+        </button>
+      </div>
+
+      <p class="document-converter-note">
+        这里会走无图片文档链路：普通文本、数字、字母转成手写体；复杂公式保留专业公式排版；最终文件不裁剪插入图片。
+      </p>
+    </section>
+
     <!-- 生成状态提示 -->
     <div v-if="isGenerating || isInCooldownPeriod" class="generation-status">
       <div v-if="isGenerating" class="status-generating">
@@ -365,6 +422,10 @@ export default {
       queueFullTotal: 0,            // 初始等待秒数，用于计算进度条
       queueFullTimer: null,         // setInterval 句柄
       enableFullPreview: false,
+      documentFile: null,
+      selectedDocumentFileName: '',
+      documentOutputFormat: 'pdf',
+      isConvertingDocument: false,
       localStorageItems: ['text', 'fontFile', 'fontSize', 'lineSpacing', 'fill', 'width', 'height', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'selectedFontFileName', 'selectedOption', 'lineSpacingSigma', 'fontSizeSigma', 'wordSpacingSigma', 'perturbXSigma', 'perturbYSigma', 'perturbThetaSigma', 'wordSpacing', 'strikethrough_length_sigma', 'strikethrough_angle_sigma', 'strikethrough_width_sigma', 'strikethrough_probability', 'strikethrough_width', 'ink_depth_sigma', 'isUnderlined', 'enableEnglishSpacing'],
     };
   },
@@ -698,6 +759,117 @@ export default {
   },
 
   methods: {
+    triggerDocumentFileInput() {
+      this.$refs.documentFileInput.click();
+    },
+    onDocumentFileChange(event) {
+      const file = event.target.files[0];
+      if (!file) {
+        return;
+      }
+      const allowedSuffixes = ['.pdf', '.docx', '.md', '.markdown'];
+      const lowerName = file.name.toLowerCase();
+      if (!allowedSuffixes.some(suffix => lowerName.endsWith(suffix))) {
+        this.errorMessage = '只支持 PDF、Word DOCX、Markdown 文件';
+        event.target.value = null;
+        return;
+      }
+      this.documentFile = file;
+      this.selectedDocumentFileName = file.name;
+      this.message = '';
+      this.errorMessage = '';
+      this.uploadMessage = '';
+    },
+    clearDocumentFile() {
+      this.documentFile = null;
+      this.selectedDocumentFileName = '';
+      if (this.$refs.documentFileInput) {
+        this.$refs.documentFileInput.value = null;
+      }
+    },
+    filenameFromDisposition(disposition, fallback) {
+      if (!disposition) {
+        return fallback;
+      }
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match) {
+        return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
+      }
+      const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+      return plainMatch ? plainMatch[1] : fallback;
+    },
+    async blobErrorMessage(blob, fallback) {
+      if (!(blob instanceof Blob)) {
+        return fallback;
+      }
+      try {
+        const text = await blob.text();
+        const data = JSON.parse(text);
+        return data.message || data.error || fallback;
+      } catch (error) {
+        return fallback;
+      }
+    },
+    async convertHandwrittenDocument() {
+      if (!this.documentFile) {
+        this.errorMessage = '请先选择要转换的文档';
+        return;
+      }
+      this.isConvertingDocument = true;
+      this.message = '';
+      this.errorMessage = '';
+      this.uploadMessage = '文档正在转换为手写体，请稍候...';
+
+      const formData = new FormData();
+      formData.append('file', this.documentFile);
+      formData.append('output_format', this.documentOutputFormat);
+
+      try {
+        const response = await this.$http.post(
+          '/api/generate_handwritten_document',
+          formData,
+          {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            responseType: 'blob',
+            timeout: 5 * 60 * 1000,
+          }
+        );
+
+        const contentType = response.headers['content-type'] || '';
+        if (contentType.includes('application/json')) {
+          this.errorMessage = await this.blobErrorMessage(response.data, '转换失败');
+          this.uploadMessage = '';
+          return;
+        }
+
+        const suffix = this.documentOutputFormat === 'docx' ? 'docx' : 'pdf';
+        const fallbackName = `${this.documentFile.name.replace(/\.[^.]+$/, '')}_handwritten.${suffix}`;
+        const filename = this.filenameFromDisposition(response.headers['content-disposition'], fallbackName);
+        const blob = new Blob([response.data], { type: contentType || 'application/octet-stream' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        this.message = `文档已转换并下载：${filename}`;
+        this.uploadMessage = '';
+        this.errorMessage = '';
+      } catch (error) {
+        if (error.response?.data instanceof Blob) {
+          this.errorMessage = await this.blobErrorMessage(error.response.data, '文档转换失败');
+        } else {
+          this.errorMessage = error.response?.data?.message || error.message || '文档转换失败';
+        }
+        this.message = '';
+        this.uploadMessage = '';
+      } finally {
+        this.isConvertingDocument = false;
+      }
+    },
     prevPage() {
       if (this.currentPreviewIndex > 0) {
         this.currentPreviewIndex--;
@@ -1588,6 +1760,95 @@ export default {
 .buttons{
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
+
+.document-converter {
+  grid-column: 1 / 2;
+  margin: 12px 20px;
+  padding: 16px;
+  border: 1px solid #d8e2ee;
+  border-radius: 8px;
+  background: #f8fbff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.document-converter-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.document-converter-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #0b4f71;
+}
+
+.document-converter-header span {
+  font-size: 0.85rem;
+  color: #6c757d;
+}
+
+.document-converter-body,
+.document-converter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.document-converter-actions select {
+  margin-left: 6px;
+  padding: 8px;
+  border: 1px solid #b9c6d3;
+  border-radius: 5px;
+  background: white;
+}
+
+.document-file-name {
+  display: inline-block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0b4f71;
+  font-size: 0.9rem;
+}
+
+.document-file-button,
+.document-convert-button,
+.document-clear-button {
+  padding: 9px 12px;
+  border-radius: 5px;
+  border: none;
+  color: white;
+  background: #4285f4;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.document-convert-button {
+  background: #0b7f61;
+}
+
+.document-clear-button {
+  background: #6c757d;
+}
+
+.document-convert-button:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
+
+.document-converter-note {
+  margin: 0;
+  color: #4d5b68;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
 .buttons button {
   grid-area: button;
   padding: 10px 10px;
@@ -1852,8 +2113,13 @@ input[type="file"]:hover {
   }
 
   #form,
-  .preview {
+  .preview,
+  .document-converter {
     flex: 1 0 100%;
+  }
+
+  .document-converter {
+    grid-column: 1;
   }
 }
 
