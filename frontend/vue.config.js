@@ -22,12 +22,12 @@ module.exports = defineConfig({
       filename: "index.html",
       // when using title option,
       // template title tag needs to be <title><%= htmlWebpackPlugin.options.title %></title>
-      title: "handwrite 手写文字生成",
+      title: "作业文档转手写体工作台",
     },
   },
   filenameHashing: process.env.NODE_ENV === "production",
   pwa: {
-    name: "handwrite 手写文字生成",
+    name: "作业文档转手写体工作台",
     themeColor: "#4fc08d",
     msTileColor: "#000000",
     workboxPluginMode: "GenerateSW",

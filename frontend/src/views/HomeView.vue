@@ -1,389 +1,264 @@
 <template>
-  <div style="height: 20px;"></div>
-  <div class="container">
-    <!-- 错误消息以及提示信息 -->
-    <div id="message">
-      <div v-if="message" class="alert alert-info" role="alert">
-        {{ message }}
-      </div>
-      <div v-if="uploadMessage" class="alert alert-info" role="alert">
-        {{ uploadMessage }}
-      </div>
-    </div> 
+  <main class="handwriting-workspace">
+    <section class="workspace-shell">
+      <aside class="control-column">
+        <header class="workspace-header">
+          <p>手写生成工作台</p>
+          <h1>上传或编辑正文，一次完成预览与导出</h1>
+        </header>
 
-    <div id="form">
-      <div class="container_file row">
+        <div v-if="message" class="notice notice-success">{{ message }}</div>
+        <div v-if="uploadMessage" class="notice notice-info">{{ uploadMessage }}</div>
+        <div v-if="errorMessage" class="notice notice-error">{{ errorMessage }}</div>
 
-        <div class="col justify-content-between">
-          <TextInput @childEvent="(eventData) => { this.text = eventData }"></TextInput>
-        </div>
-
-        <div class="col">
-          <label>{{ $t('message.fontFile') }}:</label>
-          <div class="d-flex flex-row justify-content-between">
-            <div class="font-selection">
-              <button @click="triggerFontFileInput">{{ $t('message.chooseFile') }}</button>
-              <input type="file" ref="fontFileInput" @change="onFontChange" style="display: none;" />
-            </div>
-            <select v-model="selectedOption" class="styled-select" style="width: 60%;">
-              <option v-for="option in options" :value="option.value" :key="option.value">
-                {{ option.text }}
-              </option>
-            </select>
+        <section class="panel source-panel">
+          <div class="panel-heading">
+            <span>正文来源</span>
+            <small>PDF / Word / Markdown / TXT</small>
           </div>
 
-          <div class="image-container">
-            <label>{{ $t('message.backgroundImageFile') }}:</label>
-            <div class="button-container">
-              <!-- :disabled="isDimensionSpecified" -->
-              <button @click="triggerImageFileInput" :class="{ 'button-disabled': isDimensionSpecified }"
-                :title="isDimensionSpecified ? $t('message.widthAndHeightSpecified') : ''">
-                {{ $t('message.chooseFile') }}
-                <div>
-                  <div v-if="selectedImageFileName" class="clear-button" @click.stop="clearImage">
-                    <div class="clear-button-line"></div>
-                    <div class="clear-button-line"></div>
-                  </div>
-                </div>
-              </button>
-              <span class="border p-2 fs-6 text-primary nowrap" v-if="selectedImageFileName">{{ selectedImageFileName
-                }}</span>
-              <input type="file" ref="imageFileInput" @change="onBackgroundImageChange" style="display: none;" />
-              <div v-if="isLoading" class="loader">{{ $t('message.loading') }}...</div>
+          <div
+            class="source-upload-target"
+            :class="{ disabled: isExtractingSource }"
+            @dragover.prevent
+            @drop.prevent="onSourceFileDrop"
+          >
+            <input
+              id="source-file-input"
+              type="file"
+              ref="sourceFileInput"
+              accept=".pdf,.doc,.docx,.md,.markdown,.txt,.rtf"
+              @change="onSourceFileChange"
+              class="source-file-input"
+              :disabled="isExtractingSource"
+              aria-label="选择正文文件"
+            />
+            <div class="drop-zone" aria-hidden="true">
+              <strong>{{ selectedSourceFileName || '选择正文文件' }}</strong>
+              <span>{{ isExtractingSource ? '正在识别文档内容...' : '点击选择，或把文件拖到这里' }}</span>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div c lass="label-container">
- 
-        <label>{{ $t('message.width') }}:
-          <input type="number" v-model="width" :disabled="isBackgroundImageSpecified"
-            :title="isBackgroundImageSpecified ? $t('message.backgroundImageSpecified') : ''" />
-        </label>
-      </div>
+          <div v-if="selectedSourceFileName" class="source-meta">
+            <span>{{ selectedSourceFileName }}</span>
+            <button type="button" @click="clearSourceFile">清空文件</button>
+          </div>
 
+          <textarea
+            v-model="text"
+            class="text-editor"
+            placeholder="在这里输入或校对识别后的正文。支持 Markdown 和 $...$ 公式。"
+          ></textarea>
 
-      <div class="label-container">
+          <div class="source-actions">
+            <button
+              type="button"
+              @click="downloadStandardDocx"
+              :disabled="!text.trim() || isPreparingStandardDocx"
+            >
+              {{ isPreparingStandardDocx ? '生成校对稿...' : '标准Word校对稿' }}
+            </button>
+          </div>
+        </section>
 
-        <label>{{ $t('message.height') }}:
-          <input type="number" v-model="height" :disabled="isBackgroundImageSpecified"
-            :title="isBackgroundImageSpecified ? $t('message.backgroundImageSpecified') : ''" />
-        </label>
-        <button type="button" class="close" aria-label="Close" @click="clearDimensions">
-          <span aria-hidden="true">&times;</span>
-        </button>
-      </div>
+        <section class="panel settings-panel">
+          <div class="panel-heading">
+            <span>样式设置</span>
+            <small>保持原手写渲染效果</small>
+          </div>
 
-      <input class="optionUnderline" type="checkbox" id="optionUnderline" name="option2" value="value2"
-        v-model="isUnderlined">
-      <label for="optionUnderline" style="margin-right: 0px;">增加下划线</label>
+          <div class="settings-grid">
+            <label>
+              导出格式
+              <select v-model="outputFormat">
+                <option value="pdf">PDF</option>
+                <option value="docx">Word</option>
+              </select>
+            </label>
 
-      <input class="optionEnglishSpacing" type="checkbox" id="optionEnglishSpacing" name="optionEnglishSpacing" value="englishSpacing"
-        v-model="enableEnglishSpacing">
-      <label for="optionEnglishSpacing" style="margin-right: 0px;">{{ $t('message.enableEnglishSpacing') }}</label>
+            <label>
+              字体
+              <select v-model="selectedOption">
+                <option v-for="option in options" :value="option.value" :key="option.value">
+                  {{ option.text }}
+                </option>
+              </select>
+            </label>
 
-      <div class="label-container">
+            <label>
+              字号
+              <input type="number" v-model.number="fontSize" />
+            </label>
 
-        <label>{{ $t('message.fontSize') }}:
-          <input type="number" v-model="fontSize" placeholder="recommend > 100" />
-        </label>
-      </div>
+            <label>
+              行距
+              <input type="number" v-model.number="lineSpacing" />
+            </label>
 
-      <div class="label-container">
-        <label>{{ $t('message.lineSpacing') }}:
-          <input type="number" v-model="lineSpacing" />
-        </label>
-      </div>
+            <label>
+              宽度
+              <input type="number" v-model.number="width" :disabled="isBackgroundImageSpecified" />
+            </label>
 
-      <div class="label-container">
-        <label>{{ $t('message.topMargin') }}:
-          <input type="number" v-model="marginTop" />
-        </label>
-      </div>
-
-      <div class="label-container">
-        <label>{{ $t('message.bottomMargin') }}:
-          <input type="number" v-model="marginBottom" />
-        </label>
-      </div>
-
-      <div class="label-container">
-        <label>{{ $t('message.leftMargin') }}:
-          <input type="number" v-model="marginLeft" />
-        </label>
-      </div>
-
-      <div class="label-container">
-        <label>{{ $t('message.rightMargin') }}:
-          <input type="number" v-model="marginRight" />
-        </label>
-      </div>
-      <!-- 这是一个按钮，用户点击这个按钮时，会展开或折叠下面的内容区域 -->
-      <button class="btn btn-primary" type="button" @click="toggleCollapse" style="width: 100px; font-size:0.9rem">
-        {{ $t('message.expand') }}
-      </button>
-
-      <!-- 这是一个内容区域，它的 id 与上面的按钮的 data-target 相对应 -->
-      <div v-if="isExpanded" id="collapseContent">
-        <div class="card card-body">
-          <div class="label-container">
-            <label>{{ $t('message.lineSpacingSigma') }}:
-              <input type="number" v-model="lineSpacingSigma" />
+            <label>
+              高度
+              <input type="number" v-model.number="height" :disabled="isBackgroundImageSpecified" />
             </label>
           </div>
 
-          <div class="label-container">
-            <label>{{ $t('message.fontSizeSigma') }}:
-              <input type="number" v-model="fontSizeSigma" />
-            </label>
+          <div class="asset-row">
+            <input type="file" ref="fontFileInput" @change="onFontChange" accept=".ttf" hidden />
+            <button type="button" @click="triggerFontFileInput">上传字体</button>
+            <span>{{ selectedFontFileName || '使用字体列表中的字体' }}</span>
           </div>
 
-          <div class="label-container">
-            <label>{{ $t('message.wordSpacingSigma') }}:
-              <input type="number" v-model="wordSpacingSigma" />
-            </label>
+          <div class="asset-row">
+            <input type="file" ref="imageFileInput" @change="onBackgroundImageChange" accept=".png,.jpg,.jpeg" hidden />
+            <button type="button" @click="triggerImageFileInput" :disabled="isDimensionSpecified">上传背景</button>
+            <span>{{ selectedImageFileName || '未上传时自动生成横线背景' }}</span>
+            <button v-if="selectedImageFileName" type="button" class="link-button" @click="clearImage">移除</button>
           </div>
 
-          <div class="label-container">
-            <label>{{ $t('message.perturbXSigma') }}:
-              <input type="number" v-model="perturbXSigma" />
-            </label>
+          <div class="toggle-row">
+            <label><input type="checkbox" v-model="isUnderlined" /> 增加下划线</label>
+            <label><input type="checkbox" v-model="enableEnglishSpacing" /> 增大英文单词间距</label>
           </div>
 
-          <div class="label-container">
-            <label>{{ $t('message.perturbYSigma') }}:
-              <input type="number" v-model="perturbYSigma" />
-            </label>
+          <details class="advanced-settings">
+            <summary>高级扰动与边距</summary>
+            <div class="settings-grid compact">
+              <label>上边距<input type="number" v-model.number="marginTop" /></label>
+              <label>下边距<input type="number" v-model.number="marginBottom" /></label>
+              <label>左边距<input type="number" v-model.number="marginLeft" /></label>
+              <label>右边距<input type="number" v-model.number="marginRight" /></label>
+              <label>字间距<input type="number" v-model.number="wordSpacing" /></label>
+              <label>行距扰动<input type="number" v-model.number="lineSpacingSigma" /></label>
+              <label>字号扰动<input type="number" v-model.number="fontSizeSigma" /></label>
+              <label>字距扰动<input type="number" v-model.number="wordSpacingSigma" /></label>
+              <label>横向偏移<input type="number" v-model.number="perturbXSigma" /></label>
+              <label>纵向偏移<input type="number" v-model.number="perturbYSigma" /></label>
+              <label>旋转偏移<input type="number" v-model.number="perturbThetaSigma" step="0.01" /></label>
+              <label>墨色扰动<input type="number" v-model.number="ink_depth_sigma" /></label>
+              <label>涂改概率<input type="number" v-model.number="strikethrough_probability" step="0.001" /></label>
+              <label>涂改长度<input type="number" v-model.number="strikethrough_length_sigma" /></label>
+              <label>涂改宽度<input type="number" v-model.number="strikethrough_width" /></label>
+              <label>涂改宽扰动<input type="number" v-model.number="strikethrough_width_sigma" /></label>
+              <label>涂改角度<input type="number" v-model.number="strikethrough_angle_sigma" /></label>
+            </div>
+          </details>
+        </section>
+
+        <section class="actions-panel">
+          <button type="button" class="secondary-action" @click="loadPreset">载入设置</button>
+          <button type="button" class="secondary-action" @click="savePreset">保存设置</button>
+          <button type="button" class="secondary-action" @click="resetSettings">重置</button>
+          <button type="button" class="primary-action" @click="generateHandwriting(true)" :disabled="shouldDisableButtons">
+            {{ isGenerating ? '生成中...' : '预览' }}
+          </button>
+          <button
+            v-if="isDevEnv"
+            type="button"
+            class="secondary-action"
+            @click="toggleFullPreview"
+            :disabled="shouldDisableButtons"
+          >
+            全量预览 {{ enableFullPreview ? '开' : '关' }}
+          </button>
+          <button type="button" class="primary-action export" @click="generateHandwriting(false)" :disabled="shouldDisableButtons">
+            {{ isGenerating ? '生成中...' : `导出 ${outputFormatLabel}` }}
+          </button>
+        </section>
+      </aside>
+
+      <section class="preview-column">
+        <div class="preview-header">
+          <div>
+            <p>预览</p>
+            <h2>{{ previewTitle }}</h2>
           </div>
-
-          <div class="label-container">
-            <label>{{ $t('message.perturbThetaSigma') }}:
-              <input type="number" v-model="perturbThetaSigma" />
-            </label>
-          </div>
-
-          <div class="label-container">
-            <label>{{ $t('message.wordSpacing') }}:
-              <input type="number" v-model="wordSpacing" />
-            </label>
-          </div>
-
-
-
-          <div class="label-container">
-            <label>{{ $t('message.strikethrough_length_sigma') }}:
-              <input type="text" v-model="strikethrough_length_sigma" />
-            </label>
-          </div>
-
-          <div class='label-container'>
-            <label>{{ $t('message.strikethrough_angle_sigma') }}:
-              <input type="number" v-model="strikethrough_angle_sigma" />
-            </label>
-          </div>
-
-          <div class='label-container'>
-            <label>{{ $t('message.strikethrough_width_sigma') }}:
-              <input type="number" v-model="strikethrough_width_sigma" />
-            </label>
-          </div>
-
-          <div class='label-container'>
-            <label>{{ $t('message.strikethrough_probability') }}:
-              <input type="number" v-model="strikethrough_probability" />
-            </label>
-          </div>
-
-          <div class='label-container'>
-            <label>{{ $t('message.strikethrough_width') }}:
-              <input type="number" v-model="strikethrough_width" />
-            </label>
-          </div>
-
-          <div class='label-container'>
-            <label>{{ $t('message.ink_depth_sigma') }}:
-              <input type="number" v-model="ink_depth_sigma" />
-            </label>
+          <div v-if="previewImages.length > 1" class="page-nav">
+            <button type="button" @click="prevPage" :disabled="currentPreviewIndex === 0">上一页</button>
+            <span>{{ currentPreviewIndex + 1 }} / {{ previewImages.length }}</span>
+            <button type="button" @click="nextPage" :disabled="currentPreviewIndex === previewImages.length - 1">下一页</button>
           </div>
         </div>
-      </div>
-    </div>
 
-    <section class="document-converter">
-      <div class="document-converter-header">
-        <h2>文档转手写体</h2>
-        <span>PDF / Word / Markdown</span>
-      </div>
-
-      <div class="document-converter-body">
-        <input
-          type="file"
-          ref="documentFileInput"
-          accept=".pdf,.docx,.md,.markdown"
-          @change="onDocumentFileChange"
-          style="display: none;"
-        />
-
-        <button type="button" class="document-file-button" @click="triggerDocumentFileInput">
-          选择文档
-        </button>
-
-        <span v-if="selectedDocumentFileName" class="document-file-name">
-          {{ selectedDocumentFileName }}
-        </span>
-
-        <button
-          v-if="selectedDocumentFileName"
-          type="button"
-          class="document-clear-button"
-          @click="clearDocumentFile"
-        >
-          清空
-        </button>
-      </div>
-
-      <div class="document-converter-actions">
-        <label>
-          输出格式:
-          <select v-model="documentOutputFormat">
-            <option value="pdf">PDF</option>
-            <option value="docx">Word</option>
-          </select>
-        </label>
-
-        <button
-          type="button"
-          class="document-convert-button"
-          :disabled="!documentFile || isConvertingDocument"
-          @click="convertHandwrittenDocument"
-        >
-          {{ isConvertingDocument ? '转换中...' : '转换并下载' }}
-        </button>
-      </div>
-
-      <p class="document-converter-note">
-        这里会走无图片文档链路：普通文本、数字、字母转成手写体；复杂公式保留专业公式排版；最终文件不裁剪插入图片。
-      </p>
+        <div class="paper-preview">
+          <img
+            v-if="previewImages.length > 0"
+            :src="previewImages[currentPreviewIndex]"
+            :alt="`手写预览第 ${currentPreviewIndex + 1} 页`"
+          />
+          <img v-else :src="previewImage" alt="手写预览" />
+        </div>
+      </section>
     </section>
 
-    <!-- 生成状态提示 -->
-    <div v-if="isGenerating || isInCooldownPeriod" class="generation-status">
-      <div v-if="isGenerating" class="status-generating">
-        🔄 正在生成中，请稍候...
-      </div>
-      <div v-else-if="isInCooldownPeriod" class="status-cooldown">
-        ⏳ 冷却中，还需等待 {{ remainingCooldown }} 秒
-      </div>
-    </div>
-
-    <div class="buttons">
-      <button @click="loadPreset">{{ $t('message.loadSettings') }}</button>
-      <button @click="savePreset">{{ $t('message.saveSettings') }}</button>
-      <button @click="resetSettings">{{ $t('message.resetSettings') }}</button>
-      <button @click="generateHandwriting(preview = true)" :disabled="shouldDisableButtons">
-        {{ buttonText || $t('message.preview') }}
-      </button>
-      <button v-if="isDevEnv" @click="toggleFullPreview" :disabled="shouldDisableButtons">
-        本地全量预览：{{ enableFullPreview ? '开' : '关' }}
-      </button>
-      <button @click="generateHandwriting(preview = false)" :disabled="shouldDisableButtons">
-        {{ buttonText || $t('message.generateFullHandwritingImage') }}
-      </button>
-      <button @click="generateHandwriting(preview = false, pdf_save = true)" :disabled="shouldDisableButtons">
-        {{ buttonText || $t('message.generatePdf') }}
-      </button>
-
-      <router-link to="/Feedback" class="btn btn-info">{{ $t('message.feedback') }}</router-link>
-    </div>
-
-    <!-- 页数提示 -->
-    <div v-if="isProductionSite() && text && text.length > 0" class="page-info-alert">
-      <div class="alert alert-warning" style="margin: 10px 0; font-size: 14px;">
-        <strong>📄 页数提示：</strong>
-        预计生成 <strong>{{ estimatePageCount() }}</strong> 页
-        <span v-if="estimatePageCount() > 10" style="color: #d63384;">
-          （handwrite.14790897.xyz限制一次最多10页，超出部分将被截断）
-        </span>
-      </div>
-    </div>
-    <!-- 预览区 -->
-    <div class="preview">
-      <h2 v-if="!previewImages || previewImages.length === 0">{{ $t('message.preview') }}:</h2>
-
-      <div class="preview-container text-center">
-        <!-- 导航按钮 -->
-        <div v-if="previewImages && previewImages.length > 1" class="mb-3 d-flex justify-content-center align-items-center gap-3">
-          <button @click="prevPage" class="btn btn-outline-primary btn-sm" :disabled="currentPreviewIndex === 0">
-            &larr; 上一页
-          </button>
-          <span class="mx-3 font-weight-bold">
-            第 {{ currentPreviewIndex + 1 }} 页 / 共 {{ previewImages.length }} 页
-          </span>
-          <button @click="nextPage" class="btn btn-outline-primary btn-sm" :disabled="currentPreviewIndex === previewImages.length - 1">
-            下一页 &rarr;
-          </button>
-        </div>
-
-        <!-- 图片显示 -->
-        <div v-if="previewImages && previewImages.length > 0">
-          <img :src="previewImages[currentPreviewIndex]" 
-               :alt="$t('message.previewImage') + ' ' + (currentPreviewIndex + 1)" 
-               style="width: 600px; max-width: 100%; border: 1px solid #ddd; padding: 5px; border-radius: 4px;" />
-        </div>
-        <img v-else :src="previewImage" :alt="$t('message.previewImage')" style="width: 600px; max-width: 100%;" />
-      </div>
-    </div>
-    <footer class=" footer mt-auto py-3 bg-white">
-      <div class="container text-center">
-
-        <!-- <a href="mailto:14790897abc@gmail.com" class="text-info">14790897abc@gmail.com</a> -->
-        <span class="text-black">{{ $t('message.projectAddress') }}:</span>
-        <a href="https://github.com/14790897/handwriting-web" class="text-info">GitHub</a>
-      </div>
-      <!-- 本网站是免费网站如果你是付费访问的请退款 -->
-      <div class ='freeprompt'>{{ $t('message.freeprompt') }}</div>
+    <footer class="workspace-footer">
+      <span>个人私有工具</span>
+      <span>本地优先，按需部署</span>
     </footer>
-  </div>
+  </main>
 </template>
 
 <script>
-import { mapState } from 'vuex';
-import TextInput from './TextInput.vue';
 import Swal from 'sweetalert2';
 
-
+const SETTINGS_KEYS = [
+  'text',
+  'fontSize',
+  'lineSpacing',
+  'fill',
+  'width',
+  'height',
+  'marginTop',
+  'marginBottom',
+  'marginLeft',
+  'marginRight',
+  'selectedFontFileName',
+  'selectedOption',
+  'lineSpacingSigma',
+  'fontSizeSigma',
+  'wordSpacingSigma',
+  'perturbXSigma',
+  'perturbYSigma',
+  'perturbThetaSigma',
+  'wordSpacing',
+  'strikethrough_length_sigma',
+  'strikethrough_angle_sigma',
+  'strikethrough_width_sigma',
+  'strikethrough_probability',
+  'strikethrough_width',
+  'ink_depth_sigma',
+  'isUnderlined',
+  'enableEnglishSpacing',
+  'outputFormat',
+];
 
 export default {
-  // props: {
-  //   login_delete_message: {
-  //     type: Boolean,
-  //     default: false
-  //   }
-  // },
-  components: {
-    TextInput,
-
-  },
-
+  name: 'HomeView',
   data() {
     return {
-      text: "",
+      text: '',
+      sourceFile: null,
+      selectedSourceFileName: '',
+      sourceContentFormat: 'plain',
+      isExtractingSource: false,
       fontFile: null,
+      selectedFontFileName: '',
       backgroundImage: null,
+      selectedImageFileName: '',
+      options: [],
+      selectedOption: '1',
       fontSize: 124,
       lineSpacing: 200,
-      fill: "(0, 0, 0, 255)",
+      fill: '(0, 0, 0, 255)',
       width: 2481,
       height: 3507,
       marginTop: 50,
       marginBottom: 50,
       marginLeft: 50,
       marginRight: 50,
-      previewImage: "/default1.webp", // 添加一个新的数据属性来保存预览图片的 URL
-      previewImages: [], // 用于存储多页预览图片的数组
-      currentPreviewIndex: 0, // 当前预览的图片索引
-      preview: false,
       lineSpacingSigma: 0,
       fontSizeSigma: 2,
       wordSpacingSigma: 2,
@@ -391,16 +266,6 @@ export default {
       perturbYSigma: 3,
       perturbThetaSigma: 0.05,
       wordSpacing: 1,
-      endChars: '',
-      errorMessage: '',  // 错误消息
-      message: '',  // 提示消息
-      uploadMessage: '',  // 上传提示消息
-      selectedFontFileName: '',
-      selectedImageFileName: '',
-      //字体下拉选框
-      selectedOption: '1',  // 当前选中的选项
-      options: '',  // 下拉选项
-      isLoading: false, //7.6
       strikethrough_length_sigma: 2,
       strikethrough_angle_sigma: 2,
       strikethrough_width_sigma: 2,
@@ -409,499 +274,411 @@ export default {
       ink_depth_sigma: 30,
       isUnderlined: true,
       enableEnglishSpacing: false,
-      isExpanded: false,
-      // 生成状态控制
+      outputFormat: 'pdf',
+      previewImage: '/default1.webp',
+      previewImages: [],
+      currentPreviewIndex: 0,
+      message: '',
+      uploadMessage: '',
+      errorMessage: '',
+      isLoading: false,
       isGenerating: false,
+      isPreparingStandardDocx: false,
       lastGenerateTime: 0,
-      generateCooldown: 3000, // 3秒冷却时间
+      generateCooldown: 3000,
       cooldownTimer: null,
       remainingCooldown: 0,
       isInCooldownPeriod: false,
-      // 队列满倒计时
-      queueFullCountdown: 0,        // 当前剩余秒数，>0 时展示提示
-      queueFullTotal: 0,            // 初始等待秒数，用于计算进度条
-      queueFullTimer: null,         // setInterval 句柄
+      queueFullCountdown: 0,
+      queueFullTotal: 0,
+      queueFullTimer: null,
       enableFullPreview: false,
-      documentFile: null,
-      selectedDocumentFileName: '',
-      documentOutputFormat: 'pdf',
-      isConvertingDocument: false,
-      localStorageItems: ['text', 'fontFile', 'fontSize', 'lineSpacing', 'fill', 'width', 'height', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'selectedFontFileName', 'selectedOption', 'lineSpacingSigma', 'fontSizeSigma', 'wordSpacingSigma', 'perturbXSigma', 'perturbYSigma', 'perturbThetaSigma', 'wordSpacing', 'strikethrough_length_sigma', 'strikethrough_angle_sigma', 'strikethrough_width_sigma', 'strikethrough_probability', 'strikethrough_width', 'ink_depth_sigma', 'isUnderlined', 'enableEnglishSpacing'],
     };
-  },
-  created() {
-
-    // const localStorageItems = ['text', 'fontFile', 'fontSize', 'lineSpacing', 'fill', 'width', 'height', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'selectedFontFileName', 'selectedOption', 'lineSpacingSigma', 'fontSizeSigma', 'wordSpacingSigma', 'perturbXSigma', 'perturbYSigma', 'perturbThetaSigma', 'wordSpacing'];//, 'backgroundImage', 'selectedImageFileName'
-
-    this.localStorageItems.forEach(item => {
-      const value = localStorage.getItem(item);
-      if (value !== null && value !== "undefined") {
-        try {
-          this[item] = JSON.parse(value);
-          console.log('成功加载localStorage项目:', item, '值:', this[item]);
-        } catch (error) {
-          console.error('解析localStorage项目失败:', item, '原始值:', value, '错误:', error);
-        }
-      } else {
-        console.log('localstorage缺失item:' + item)
-      }
-    });
-
-    this.$http.get('/api/fonts_info').then(response => {
-      this.options = response.data.map((font, index) => {
-        return { value: String(index + 1), text: font };
-      });
-    }).catch(error => {
-      if (error.response && error.response.data) {
-        this.errorMessage = error.response.data.error;
-        this.message = '';
-        this.uploadMessage = '';
-      } else {
-        this.errorMessage = error;
-        this.message = '';
-        this.uploadMessage = '';
-      }
-    });
-    console.log('options' + this.options)
   },
   computed: {
     isDimensionSpecified() {
-      // 当宽度或高度有值时，返回 true，这会禁用背景图片输入框
       return !!(this.width || this.height);
     },
     isBackgroundImageSpecified() {
-      // 当有背景图片时，返回 true，这会禁用宽度和高度输入框
       return !!this.backgroundImage;
     },
-
-    // 按钮是否应该被禁用
     shouldDisableButtons() {
-      return this.isGenerating || this.isInCooldownPeriod || this.queueFullCountdown > 0;
-    },
-
-    // 队列满进度条（从100%倒减到0%）
-    queueFullBarPercent() {
-      if (this.queueFullTotal <= 0) return 0;
-      return Math.max(0, (this.queueFullCountdown / this.queueFullTotal) * 100);
-    },
-
-    // 按钮显示文本
-    buttonText() {
-      if (this.isGenerating) {
-        return '生成中...';
-      } else if (this.isInCooldownPeriod) {
-        return `请等待 ${this.remainingCooldown}s`;
-      }
-      return null; // 使用默认文本
+      return this.isGenerating || this.isInCooldownPeriod || this.queueFullCountdown > 0 || this.isExtractingSource;
     },
     isDevEnv() {
       return process.env.NODE_ENV === 'development';
     },
-
-    //vuex中的login_delete_message，下面使用watch监控这个值  7.13
-    ...mapState(['login_delete_message']),
+    outputFormatLabel() {
+      return this.outputFormat === 'docx' ? 'Word' : 'PDF';
+    },
+    previewTitle() {
+      if (this.previewImages.length > 0) {
+        return `第 ${this.currentPreviewIndex + 1} 页`;
+      }
+      return '等待生成手写预览';
+    },
   },
   watch: {
-    login_delete_message(newVal) {
-      if (newVal) {
-        // this.message = '';
-        // this.uploadMessage = '';
-        console.log('已进入watch，错误消息已经清空');
-      }
+    text(value) {
+      localStorage.setItem('text', JSON.stringify(value));
     },
-    errorMessage(newVal) {
-      if (newVal) {
+    outputFormat(value) {
+      localStorage.setItem('outputFormat', JSON.stringify(value));
+    },
+    errorMessage(value) {
+      if (value) {
         this.$swal.fire({
           toast: true,
           position: 'top-end',
           icon: 'error',
-          title: newVal,
+          title: value,
           showConfirmButton: false,
           timer: 5000,
           timerProgressBar: true,
         });
       }
     },
-    message(newVal) {
-      if (newVal) {
+    message(value) {
+      if (value) {
         this.$swal.fire({
           toast: true,
           position: 'top-end',
           icon: 'success',
-          title: newVal,
+          title: value,
           showConfirmButton: false,
           timer: 3000,
           timerProgressBar: true,
         });
       }
     },
-    uploadMessage(newVal) {
-      if (newVal) {
-        this.$swal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'info',
-          title: newVal,
-          showConfirmButton: false,
-          timer: false, // 上传提示保持显示
-          showClass: { popup: 'swal2-show' },
-          hideClass: { popup: 'swal2-hide' },
-        });
-      }
-    },
-    queueFullCountdown(newVal) {
-      if (newVal > 0) {
-        this.$swal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'warning',
-          title: `服务器繁忙，队列已满，预计 ${newVal} 秒后可重试`,
-          showConfirmButton: false,
-          timer: newVal * 1000,
-          timerProgressBar: true,
-          didOpen: (toast) => {
-            const progressBar = toast.querySelector('.swal2-timer-progress-bar');
-            if (progressBar && this.queueFullTotal > 0) {
-              // 更新进度条
-              const updateProgress = () => {
-                if (this.queueFullCountdown > 0 && progressBar) {
-                  const percent = (this.queueFullCountdown / this.queueFullTotal) * 100;
-                  progressBar.style.width = percent + '%';
-                  requestAnimationFrame(updateProgress);
-                }
-              };
-              requestAnimationFrame(updateProgress);
-            }
-          },
-        });
-      }
-    },
-    text: {
-      handler(newVal) {
-        localStorage.setItem('text', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    fontFile: {
-      handler(newVal) {
-        localStorage.setItem('fontFile', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    // backgroundImage: {
-    //   handler(newVal) {
-    //     localStorage.setItem('backgroundImage', JSON.stringify(newVal));
-    //   },
-    //   deep: true
-    // },
-    fontSize: {
-      handler(newVal) {
-        localStorage.setItem('fontSize', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    lineSpacing: {
-      handler(newVal) {
-        localStorage.setItem('lineSpacing', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    fill: {
-      handler(newVal) {
-        localStorage.setItem('fill', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    width: {
-      handler(newVal) {
-        localStorage.setItem('width', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    height: {
-      handler(newVal) {
-        localStorage.setItem('height', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    marginTop: {
-      handler(newVal) {
-        localStorage.setItem('marginTop', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    marginBottom: {
-      handler(newVal) {
-        localStorage.setItem('marginBottom', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    marginLeft: {
-      handler(newVal) {
-        localStorage.setItem('marginLeft', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    marginRight: {
-      handler(newVal) {
-        localStorage.setItem('marginRight', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    selectedFontFileName: {
-      handler(newVal) {
-        localStorage.setItem('selectedFontFileName', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    selectedImageFileName: {
-      handler(newVal) {
-        localStorage.setItem('selectedImageFileName', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    selectedOption: {
-      handler(newVal) {
-        localStorage.setItem('selectedOption', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    lineSpacingSigma: {
-      handler(newVal) {
-        localStorage.setItem('lineSpacingSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    fontSizeSigma: {
-      handler(newVal) {
-        localStorage.setItem('fontSizeSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    wordSpacingSigma: {
-      handler(newVal) {
-        localStorage.setItem('wordSpacingSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    perturbXSigma: {
-      handler(newVal) {
-        localStorage.setItem('perturbXSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    perturbYSigma: {
-      handler(newVal) {
-        localStorage.setItem('perturbYSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    perturbThetaSigma: {
-      handler(newVal) {
-        localStorage.setItem('perturbThetaSigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    wordSpacing: {
-      handler(newVal) {
-        localStorage.setItem('wordSpacing', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    strikethrough_length_sigma: {
-      handler(newVal) {
-        localStorage.setItem('strikethrough_length_sigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    strikethrough_angle_sigma: {
-      handler(newVal) {
-        localStorage.setItem('strikethrough_angle_sigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    strikethrough_width_sigma: {
-      handler(newVal) {
-        localStorage.setItem('strikethrough_width_sigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    strikethrough_probability: {
-      handler(newVal) {
-        localStorage.setItem('strikethrough_probability', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    strikethrough_width: {
-      handler(newVal) {
-        localStorage.setItem('strikethrough_width', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    ink_depth_sigma: {
-      handler(newVal) {
-        localStorage.setItem('ink_depth_sigma', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    isUnderlined: {
-      handler(newVal) {
-        localStorage.setItem('isUnderlined', JSON.stringify(newVal));
-      },
-      deep: true
-    },
-    enableEnglishSpacing: {
-      handler(newVal) {
-        localStorage.setItem('enableEnglishSpacing', JSON.stringify(newVal));
-      },
-      deep: true
-    },
   },
-
+  created() {
+    SETTINGS_KEYS.forEach((item) => {
+      const value = localStorage.getItem(item);
+      if (value !== null && value !== 'undefined') {
+        try {
+          this[item] = JSON.parse(value);
+        } catch (error) {
+          localStorage.removeItem(item);
+        }
+      }
+    });
+    this.loadFonts();
+  },
+  beforeUnmount() {
+    if (this.cooldownTimer) {
+      clearInterval(this.cooldownTimer);
+    }
+    if (this.queueFullTimer) {
+      clearInterval(this.queueFullTimer);
+    }
+  },
   methods: {
-    triggerDocumentFileInput() {
-      this.$refs.documentFileInput.click();
+    async loadFonts() {
+      try {
+        const response = await this.$http.get('/api/fonts_info');
+        this.options = response.data.map((font, index) => ({ value: String(index + 1), text: font }));
+        if (!this.options.find((option) => option.value === this.selectedOption)) {
+          this.selectedOption = this.options[0]?.value || '1';
+        }
+      } catch (error) {
+        this.errorMessage = error.response?.data?.error || error.message || '字体列表加载失败';
+      }
     },
-    onDocumentFileChange(event) {
+    async onSourceFileChange(event) {
       const file = event.target.files[0];
-      if (!file) {
-        return;
-      }
-      const allowedSuffixes = ['.pdf', '.docx', '.md', '.markdown'];
+      if (!file) return;
+      await this.handleSourceFile(file, event);
+    },
+    async onSourceFileDrop(event) {
+      if (this.isExtractingSource) return;
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) return;
+      await this.handleSourceFile(file);
+    },
+    async handleSourceFile(file, event = null) {
+      const allowedSuffixes = ['.pdf', '.doc', '.docx', '.md', '.markdown', '.txt', '.rtf'];
       const lowerName = file.name.toLowerCase();
-      if (!allowedSuffixes.some(suffix => lowerName.endsWith(suffix))) {
-        this.errorMessage = '只支持 PDF、Word DOCX、Markdown 文件';
-        event.target.value = null;
+      if (!allowedSuffixes.some((suffix) => lowerName.endsWith(suffix))) {
+        this.errorMessage = '只支持 PDF、Word、Markdown、TXT、RTF 文件';
+        if (event?.target) {
+          event.target.value = null;
+        }
         return;
       }
-      this.documentFile = file;
-      this.selectedDocumentFileName = file.name;
+      this.sourceFile = file;
+      this.selectedSourceFileName = file.name;
+      await this.extractSourceFile();
+    },
+    async extractSourceFile() {
+      if (!this.sourceFile) return;
+      this.isExtractingSource = true;
       this.message = '';
       this.errorMessage = '';
-      this.uploadMessage = '';
-    },
-    clearDocumentFile() {
-      this.documentFile = null;
-      this.selectedDocumentFileName = '';
-      if (this.$refs.documentFileInput) {
-        this.$refs.documentFileInput.value = null;
-      }
-    },
-    filenameFromDisposition(disposition, fallback) {
-      if (!disposition) {
-        return fallback;
-      }
-      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-      if (utf8Match) {
-        return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
-      }
-      const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
-      return plainMatch ? plainMatch[1] : fallback;
-    },
-    async blobErrorMessage(blob, fallback) {
-      if (!(blob instanceof Blob)) {
-        return fallback;
-      }
-      try {
-        const text = await blob.text();
-        const data = JSON.parse(text);
-        return data.message || data.error || fallback;
-      } catch (error) {
-        return fallback;
-      }
-    },
-    async convertHandwrittenDocument() {
-      if (!this.documentFile) {
-        this.errorMessage = '请先选择要转换的文档';
-        return;
-      }
-      this.isConvertingDocument = true;
-      this.message = '';
-      this.errorMessage = '';
-      this.uploadMessage = '文档正在转换为手写体，请稍候...';
-
+      this.uploadMessage = '正在识别文档内容...';
       const formData = new FormData();
-      formData.append('file', this.documentFile);
-      formData.append('output_format', this.documentOutputFormat);
-
+      formData.append('file', this.sourceFile);
       try {
-        const response = await this.$http.post(
-          '/api/generate_handwritten_document',
-          formData,
-          {
-            headers: { 'Content-Type': 'multipart/form-data' },
-            responseType: 'blob',
-            timeout: 5 * 60 * 1000,
-          }
-        );
-
-        const contentType = response.headers['content-type'] || '';
-        if (contentType.includes('application/json')) {
-          this.errorMessage = await this.blobErrorMessage(response.data, '转换失败');
-          this.uploadMessage = '';
-          return;
-        }
-
-        const suffix = this.documentOutputFormat === 'docx' ? 'docx' : 'pdf';
-        const fallbackName = `${this.documentFile.name.replace(/\.[^.]+$/, '')}_handwritten.${suffix}`;
-        const filename = this.filenameFromDisposition(response.headers['content-disposition'], fallbackName);
-        const blob = new Blob([response.data], { type: contentType || 'application/octet-stream' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-
-        this.message = `文档已转换并下载：${filename}`;
+        const response = await this.$http.post('/api/handwriting/extract_source', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 10 * 60 * 1000,
+        });
+        this.text = response.data.markdown || '';
+        this.sourceContentFormat = 'markdown';
+        const warnings = response.data.warnings || [];
+        this.message = warnings.length ? `识别完成，但有提示：${warnings.join('；')}` : '文档内容已识别并规范化，请校对后预览或导出';
         this.uploadMessage = '';
-        this.errorMessage = '';
       } catch (error) {
-        if (error.response?.data instanceof Blob) {
-          this.errorMessage = await this.blobErrorMessage(error.response.data, '文档转换失败');
-        } else {
-          this.errorMessage = error.response?.data?.message || error.message || '文档转换失败';
-        }
-        this.message = '';
+        this.errorMessage = error.response?.data?.message || error.message || '文档识别失败';
         this.uploadMessage = '';
       } finally {
-        this.isConvertingDocument = false;
+        this.isExtractingSource = false;
       }
     },
-    prevPage() {
-      if (this.currentPreviewIndex > 0) {
-        this.currentPreviewIndex--;
+    clearSourceFile() {
+      this.sourceFile = null;
+      this.selectedSourceFileName = '';
+      this.sourceContentFormat = this.detectMarkdownContent() ? 'markdown' : 'plain';
+      if (this.$refs.sourceFileInput) {
+        this.$refs.sourceFileInput.value = null;
       }
     },
-    nextPage() {
-      if (this.currentPreviewIndex < this.previewImages.length - 1) {
-        this.currentPreviewIndex++;
+    triggerFontFileInput() {
+      this.$refs.fontFileInput.click();
+    },
+    onFontChange(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.fontFile = file;
+      this.selectedFontFileName = file.name;
+      const newOption = { value: String(this.options.length + 1), text: file.name };
+      this.options = [...this.options.filter((option) => option.text !== file.name), newOption];
+      this.selectedOption = newOption.value;
+      this.message = '字体已载入';
+    },
+    triggerImageFileInput() {
+      if (!this.isDimensionSpecified) {
+        this.$refs.imageFileInput.click();
       }
     },
-    toggleCollapse() {
-      this.isExpanded = !this.isExpanded;
-    },
-    toggleFullPreview() {
-      this.enableFullPreview = !this.enableFullPreview;
-    },
-    startQueueFullCountdown(seconds) {
-      // 清掉旧计时器
-      if (this.queueFullTimer) {
-        clearInterval(this.queueFullTimer);
-        this.queueFullTimer = null;
-      }
-      this.queueFullTotal = seconds;
-      this.queueFullCountdown = seconds;
-      this.queueFullTimer = setInterval(() => {
-        this.queueFullCountdown -= 1;
-        if (this.queueFullCountdown <= 0) {
-          this.queueFullCountdown = 0;
-          clearInterval(this.queueFullTimer);
-          this.queueFullTimer = null;
+    onBackgroundImageChange(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.backgroundImage = file;
+      this.selectedImageFileName = file.name;
+      this.previewImage = URL.createObjectURL(file);
+      Swal.fire({
+        title: '是否自动识别页面边距？',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '识别',
+        cancelButtonText: '跳过',
+      }).then((result) => {
+        if (result.isConfirmed) {
+          this.identifyBackgroundMargins();
         }
-      }, 1000);
+      });
+    },
+    async identifyBackgroundMargins() {
+      const formData = new FormData();
+      formData.append('file', this.backgroundImage);
+      this.isLoading = true;
+      try {
+        const response = await this.$http.post('/api/imagefileprocess', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        this.marginLeft = response.data.marginLeft;
+        this.marginRight = response.data.marginRight;
+        this.marginTop = response.data.marginTop - this.lineSpacing;
+        this.marginBottom = response.data.marginBottom;
+        this.lineSpacing = response.data.lineSpacing;
+        this.message = '背景图片已加载并识别边距';
+      } catch (error) {
+        this.errorMessage = error.response?.data?.error || error.message || '背景识别失败';
+      } finally {
+        this.isLoading = false;
+      }
+    },
+    clearImage() {
+      this.backgroundImage = null;
+      this.selectedImageFileName = '';
+      this.previewImage = '/default1.webp';
+      if (this.$refs.imageFileInput) {
+        this.$refs.imageFileInput.value = null;
+      }
+    },
+    detectMarkdownContent() {
+      return /(^|\n)\s{0,3}#{1,6}\s|\$[^$]+\$|\\(?:frac|sqrt|sum|int|begin)/.test(this.text || '');
+    },
+    activeContentFormat() {
+      if (this.sourceContentFormat === 'markdown') return 'markdown';
+      return this.detectMarkdownContent() ? 'markdown' : 'plain';
+    },
+    async downloadStandardDocx() {
+      if (!this.text || !this.text.trim()) {
+        this.errorMessage = '请先输入或上传正文';
+        return;
+      }
+      this.isPreparingStandardDocx = true;
+      this.message = '';
+      this.errorMessage = '';
+      this.uploadMessage = '正在生成标准Word校对稿...';
+      const formData = new FormData();
+      formData.append('markdown', this.text);
+      formData.append('filename', `${this.selectedSourceFileName || 'standard_formula_draft'}.docx`);
+      try {
+        const response = await this.$http.post('/api/handwriting/markdown_docx', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          responseType: 'blob',
+          timeout: 120000,
+        });
+        const filename = this.filenameFromDisposition(response.headers['content-disposition'], 'standard_formula_draft.docx');
+        this.downloadBlob(response.data, filename);
+        this.message = `标准Word校对稿已导出：${filename}`;
+        this.uploadMessage = '';
+      } catch (error) {
+        if (error.response?.data instanceof Blob) {
+          this.errorMessage = await this.blobErrorMessage(error.response.data, '标准Word校对稿生成失败');
+        } else {
+          this.errorMessage = error.response?.data?.message || error.message || '标准Word校对稿生成失败';
+        }
+        this.uploadMessage = '';
+      } finally {
+        this.isPreparingStandardDocx = false;
+      }
+    },
+    validateBeforeGenerate() {
+      if (!this.text || typeof this.text !== 'string' || !this.text.trim()) {
+        this.errorMessage = '请先输入或上传正文';
+        return false;
+      }
+      const numericItems = [
+        'fontSize',
+        'lineSpacing',
+        'marginTop',
+        'marginBottom',
+        'marginLeft',
+        'marginRight',
+        'lineSpacingSigma',
+        'fontSizeSigma',
+        'wordSpacingSigma',
+        'perturbXSigma',
+        'perturbYSigma',
+        'perturbThetaSigma',
+        'wordSpacing',
+        'strikethrough_length_sigma',
+        'strikethrough_angle_sigma',
+        'strikethrough_width_sigma',
+        'strikethrough_probability',
+        'strikethrough_width',
+        'ink_depth_sigma',
+      ];
+      for (const item of numericItems) {
+        if (Number.isNaN(Number(this[item]))) {
+          this.errorMessage = '样式参数必须是数字';
+          return false;
+        }
+      }
+      if (this.height < this.marginTop + this.lineSpacing + this.marginBottom && this.isDimensionSpecified) {
+        this.errorMessage = '上边距、下边距和行间距之和不能大于高度';
+        return false;
+      }
+      if (this.fontSize > this.lineSpacing) {
+        this.errorMessage = '字体大小不能大于行间距';
+        return false;
+      }
+      if (!this.options[this.selectedOption - 1]) {
+        this.errorMessage = '请先选择字体';
+        return false;
+      }
+      return true;
+    },
+    buildGenerationFormData(preview) {
+      const formData = new FormData();
+      formData.append('text', this.text);
+      if (this.options[this.selectedOption - 1]?.text === this.selectedFontFileName && this.fontFile) {
+        formData.append('font_file', this.fontFile);
+      }
+      formData.append('background_image', this.backgroundImage);
+      formData.append('font_size', this.fontSize);
+      formData.append('line_spacing', this.lineSpacing);
+      formData.append('fill', this.fill);
+      if (this.width) formData.append('width', this.width);
+      if (this.height) formData.append('height', this.height);
+      formData.append('top_margin', this.marginTop);
+      formData.append('bottom_margin', this.marginBottom);
+      formData.append('left_margin', this.marginLeft);
+      formData.append('right_margin', this.marginRight);
+      formData.append('line_spacing_sigma', this.lineSpacingSigma);
+      formData.append('font_size_sigma', this.fontSizeSigma);
+      formData.append('word_spacing_sigma', this.wordSpacingSigma);
+      formData.append('perturb_x_sigma', this.perturbXSigma);
+      formData.append('perturb_y_sigma', this.perturbYSigma);
+      formData.append('perturb_theta_sigma', this.perturbThetaSigma);
+      formData.append('word_spacing', this.wordSpacing);
+      formData.append('preview', preview.toString());
+      formData.append('font_option', this.options[this.selectedOption - 1].text);
+      formData.append('strikethrough_length_sigma', this.strikethrough_length_sigma);
+      formData.append('strikethrough_angle_sigma', this.strikethrough_angle_sigma);
+      formData.append('strikethrough_width_sigma', this.strikethrough_width_sigma);
+      formData.append('strikethrough_probability', this.strikethrough_probability);
+      formData.append('strikethrough_width', this.strikethrough_width);
+      formData.append('ink_depth_sigma', this.ink_depth_sigma);
+      formData.append('pdf_save', (!preview && this.outputFormat === 'pdf').toString());
+      formData.append('output_format', preview ? 'pdf' : this.outputFormat);
+      formData.append('content_format', this.activeContentFormat());
+      formData.append('isUnderlined', this.isUnderlined.toString());
+      formData.append('enableEnglishSpacing', this.enableEnglishSpacing.toString());
+      const allowFullPreview = this.isDevEnv && this.enableFullPreview && preview;
+      formData.append('full_preview', allowFullPreview.toString());
+      return { formData, allowFullPreview };
+    },
+    async generateHandwriting(preview = false) {
+      if (this.isGenerating) {
+        this.errorMessage = '正在生成中，请稍候';
+        return;
+      }
+      const currentTime = Date.now();
+      const timeSinceLastGenerate = currentTime - this.lastGenerateTime;
+      if (timeSinceLastGenerate < this.generateCooldown) {
+        this.errorMessage = `请等待 ${Math.ceil((this.generateCooldown - timeSinceLastGenerate) / 1000)} 秒后再次生成`;
+        return;
+      }
+      if (!this.validateBeforeGenerate()) return;
+
+      this.isGenerating = true;
+      this.lastGenerateTime = currentTime;
+      this.startCooldownTimer();
+      this.message = '';
+      this.errorMessage = '';
+      this.uploadMessage = preview ? '正在生成预览...' : `正在导出 ${this.outputFormatLabel}...`;
+
+      try {
+        const { formData, allowFullPreview } = this.buildGenerationFormData(preview);
+        const taskCreateResponse = await this.$http.post('/api/generate_handwriting', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          withCredentials: true,
+        });
+        const taskId = taskCreateResponse.data?.task_id;
+        if (!taskId) {
+          throw new Error('未获取到任务ID');
+        }
+        this.uploadMessage = `任务已提交，正在生成中（Task ID: ${taskId}）`;
+        try {
+          await this.waitForTaskViaWebSocket(taskId);
+        } catch (wsError) {
+          await this.pollGenerationTask(taskId);
+        }
+        const resultResponse = await this.$http.get(`/api/generate_handwriting/task/${taskId}/result`, {
+          responseType: preview ? (allowFullPreview ? 'json' : 'blob') : 'blob',
+          withCredentials: true,
+        });
+        this.handleGenerationResultResponse(resultResponse, preview);
+      } catch (error) {
+        await this.handleGenerationError(error);
+      } finally {
+        this.isGenerating = false;
+      }
     },
     updateTaskUploadMessage(taskData, taskId) {
       const taskStatus = taskData?.task_status;
@@ -911,11 +688,7 @@ export default {
       const queueAheadCount = taskData?.queue_ahead_count;
       const processingCount = taskData?.processing_count;
       if (taskStatus === 'pending' && typeof queuePendingCount === 'number' && typeof queueAheadCount === 'number') {
-        if (typeof processingCount === 'number') {
-          this.uploadMessage = `${taskMessage}（前方排队 ${queueAheadCount} 人，当前排队 ${queuePendingCount} 人，处理中 ${processingCount} 人） Task ID: ${taskId}`;
-        } else {
-          this.uploadMessage = `${taskMessage}（前方排队 ${queueAheadCount} 人，当前排队 ${queuePendingCount} 人） Task ID: ${taskId}`;
-        }
+        this.uploadMessage = `${taskMessage}（前方 ${queueAheadCount} 人，排队 ${queuePendingCount} 人，处理中 ${processingCount || 0} 人） Task ID: ${taskId}`;
       } else if (typeof taskProgress === 'number') {
         this.uploadMessage = `${taskMessage}（${taskProgress}%） Task ID: ${taskId}`;
       } else {
@@ -926,20 +699,13 @@ export default {
       return new Promise((resolve, reject) => {
         let isSettled = false;
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsUrl = `${protocol}://${window.location.host}/api/generate_handwriting/ws/${taskId}`;
-        const socket = new WebSocket(wsUrl);
-
+        const socket = new WebSocket(`${protocol}://${window.location.host}/api/generate_handwriting/ws/${taskId}`);
         const timeoutId = setTimeout(() => {
           if (isSettled) return;
           isSettled = true;
-          try {
-            socket.close();
-          } catch (e) {
-            // ignore close errors
-          }
+          socket.close();
           reject(new Error('WebSocket任务等待超时'));
         }, timeoutMs);
-
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
@@ -951,7 +717,6 @@ export default {
               reject(new Error(data?.message || '任务不存在'));
               return;
             }
-
             this.updateTaskUploadMessage(data, taskId);
             if (data?.task_status === 'completed') {
               if (isSettled) return;
@@ -967,17 +732,15 @@ export default {
               reject(new Error(data?.error_message || '任务执行失败'));
             }
           } catch (e) {
-            // ignore malformed payload
+            // Ignore malformed progress payloads.
           }
         };
-
         socket.onerror = () => {
           if (isSettled) return;
           isSettled = true;
           clearTimeout(timeoutId);
           reject(new Error('WebSocket连接失败'));
         };
-
         socket.onclose = () => {
           if (isSettled) return;
           isSettled = true;
@@ -992,365 +755,156 @@ export default {
         const statusResponse = await this.$http.get(`/api/generate_handwriting/task/${taskId}`);
         const taskStatus = statusResponse.data?.task_status;
         this.updateTaskUploadMessage(statusResponse.data, taskId);
-        if (taskStatus === 'completed') {
-          return;
-        }
+        if (taskStatus === 'completed') return;
         if (taskStatus === 'failed') {
           throw new Error(statusResponse.data?.error_message || '任务执行失败');
         }
-        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
       throw new Error('任务处理超时，请重试');
     },
-    handleGenerationResultResponse(response) {
+    filenameFromDisposition(disposition, fallback) {
+      if (!disposition) return fallback;
+      const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match) return decodeURIComponent(utf8Match[1].replace(/"/g, ''));
+      const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+      return plainMatch ? plainMatch[1] : fallback;
+    },
+    downloadBlob(blob, filename) {
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    },
+    handleGenerationResultResponse(response, preview) {
       const contentType = response.headers['content-type'] || '';
-      if (contentType.includes('application/json')) {
-        // 处理多页预览图像 (JSON)
-        if (response.data && response.data.status === 'success') {
-          this.previewImages = response.data.images.map(img => 'data:image/png;base64,' + img);
-          this.currentPreviewIndex = 0; // 重置为第一页
-          if (this.previewImages.length > 0) {
-            this.previewImage = this.previewImages[0]; // 兼容显示第一页
-          }
-          this.message = '预览图像已加载。';
-          this.uploadMessage = '';
-          this.errorMessage = '';
-        }
-      } else if (contentType.includes('image/png')) {
-        // 兼容旧的单张图片返回逻辑
+      if (contentType.includes('application/json') && response.data?.status === 'success') {
+        this.previewImages = response.data.images.map((img) => `data:image/png;base64,${img}`);
+        this.currentPreviewIndex = 0;
+        this.previewImage = this.previewImages[0] || this.previewImage;
+        this.message = '预览已生成';
+        this.uploadMessage = '';
+        return;
+      }
+      if (contentType.includes('image/png')) {
         const blobUrl = URL.createObjectURL(response.data);
-        // 将预览图像的 URL 保存到数据属性中
-        this.previewImage = blobUrl;
         this.previewImages = [blobUrl];
-        // 设置提示信息
-        this.message = '预览图像已加载。';//显示message时，隐藏其他提示信息
+        this.currentPreviewIndex = 0;
+        this.previewImage = blobUrl;
+        this.message = '预览已生成';
         this.uploadMessage = '';
-        this.errorMessage = '';
-
-      } else if (contentType.includes('application/zip')) {
-        // 处理.zip文件
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'images.zip'); // 或任何其他文件名
-        document.body.appendChild(link);
-        link.click();
-        // 下载完成后，将链接删除，7.5
-        document.body.removeChild(link);
-        // 设置提示信息
-        this.message = '文件已下载。';
-        this.uploadMessage = '';
-        this.errorMessage = '';
-
-      } else if (contentType.includes('application/pdf')) {
-        // 处理.pdf文件
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'images.pdf'); // 或任何其他文件名
-        document.body.appendChild(link);
-        link.click();
-        // 下载完成后，将链接删除
-        document.body.removeChild(link);
-        // 设置提示信息
-        this.message = '文件已下载。';
-        this.uploadMessage = '';
-        this.errorMessage = '';
-      } else {
-        // console.log(text);
-        console.error(`Unexpected response type: ${contentType}, ${response.data}`);
+        return;
+      }
+      const suffix = contentType.includes('wordprocessingml') ? 'docx' : 'pdf';
+      const fallback = suffix === 'docx' ? 'images.docx' : 'images.pdf';
+      const filename = this.filenameFromDisposition(response.headers['content-disposition'], fallback);
+      this.downloadBlob(new Blob([response.data], { type: contentType || 'application/octet-stream' }), filename);
+      this.message = preview ? '预览已生成' : `文件已导出：${filename}`;
+      this.uploadMessage = '';
+      this.errorMessage = '';
+    },
+    async blobErrorMessage(blob, fallback) {
+      if (!(blob instanceof Blob)) return fallback;
+      try {
+        const text = await blob.text();
+        const data = JSON.parse(text);
+        return data.message || data.error || fallback;
+      } catch (error) {
+        return fallback;
       }
     },
-    async generateHandwriting(preview = false, pdf_save = false) {
-      // console.log('pdf_save', pdf_save)
-
-      // 检查是否正在生成
-      if (this.isGenerating) {
-        this.$swal.fire({
-          icon: 'warning',
-          title: '正在生成中，请稍候...',
-          showConfirmButton: false,
-          timer: 2000,
-        });
-        return;
-      }
-
-      // 检查冷却时间
-      const currentTime = Date.now();
-      const timeSinceLastGenerate = currentTime - this.lastGenerateTime;
-      if (timeSinceLastGenerate < this.generateCooldown) {
-        const remainingTime = Math.ceil((this.generateCooldown - timeSinceLastGenerate) / 1000);
-        this.$swal.fire({
-          icon: 'warning',
-          title: `请等待 ${remainingTime} 秒后再次生成`,
-          showConfirmButton: false,
-          timer: 2000,
-        });
-        return;
-      }
-
-      // 设置生成状态
-      this.isGenerating = true;
-      this.lastGenerateTime = currentTime;
-
-      // 启动冷却时间定时器
-      this.startCooldownTimer();
-
-      try {
-        // 检查是否为生产环境并进行页数限制
-        if (!preview && this.isProductionSite()) {
-          const estimatedPages = this.estimatePageCount();
-          if (estimatedPages > 15) {
-            const confirmed = await this.showPageLimitDialog(estimatedPages);
-            if (!confirmed) {
-              return; // 用户取消生成
-            }
-            // 用户确认继续，在前端截断文本到前15页
-            this.truncateTextToPages(15);
-          }
-        }
-
-      // 验证输入
-      const Items = ['text', 'backgroundImage', 'fontSize', 'lineSpacing', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight', 'lineSpacingSigma', 'fontSizeSigma', 'wordSpacingSigma', 'perturbXSigma', 'perturbYSigma', 'perturbThetaSigma', 'wordSpacing', 'strikethrough_length_sigma', 'strikethrough_angle_sigma', 'strikethrough_width_sigma', 'strikethrough_probability', 'strikethrough_width', 'ink_depth_sigma'];
-      Items.forEach(item => {
-        let value = this[item];
-        // if (!value) {
-        //   console.error(`Missing value for ${item}`);
-        //   return;
-        // }
-        // 对不同的输入进行不同的验证
-        switch (item) {
-          case 'text':
-            // 验证 text 是否是字符串
-            if (typeof value !== 'string') {
-              console.error(`Invalid value for ${item}`);
-              this.errorMessage = '请输入字符串';
-            }
-            // return;
-            break;
-          case 'fontSize':
-          case 'lineSpacing':
-          case 'marginTop':
-          case 'marginBottom':
-          case 'marginLeft':
-          case 'marginRight':
-          case 'lineSpacingSigma':
-          case 'fontSizeSigma':
-          case 'wordSpacingSigma':
-          case 'perturbXSigma':
-          case 'perturbYSigma':
-          case 'perturbThetaSigma':
-          case 'wordSpacing':
-          case 'strikethrough_length_sigma':
-          case 'strikethrough_angle_sigma':
-          case 'strikethrough_width_sigma':
-          case 'strikethrough_probability':
-          case 'strikethrough_width':
-          case 'ink_depth_sigma':
-            // 验证这些值是否是数字
-            if (isNaN(Number(value))) {
-              console.error(`Invalid value for ${item}`);
-              this.errorMessage = '请输入数字';
-            }
-            // return
-            break;
-          case 'backgroundImage':
-            // 验证 backgroundImage 是否是有效的 URL 或者文件路径
-            // 这可能需要更复杂的验证
-            break;
-          default:
-            console.error(`Unknown item: ${item}`);
-        }
-      });
-
-      if (this.height < this.marginTop + this.lineSpacing + this.marginBottom && this.isDimensionSpecified) {
-        this.errorMessage = '上边距、下边距和行间距之和不能大于高度';
-        this.message = '';
-        this.uploadMessage = '';
-        return;
-      }
-      if (this.fontSize > this.lineSpacing) {
-        this.errorMessage = '字体大小不能大于行间距';
-        this.message = '';
-        this.uploadMessage = '';
-        return;
-      }
-
-      this.preview = preview;
-      // this.pdf_save = pdf_save;
-      // 设置提示信息为“内容正在上传…”
-      this.uploadMessage = '内容正在上传并处理…（如果长时间没有响应说明服务器崩溃）单次请求最多处理五分钟，超过这个时间则失败';//显示上传提示信息时，隐藏其他提示信息
-      console.log('内容正在上传并处理…');
-      this.message = '';
-      this.errorMessage = '';
-      const formData = new FormData();
-      formData.append("text", this.text);
-      // 只有当用户选择的字体文件名与字体下拉选项中的字体文件名相同时，才上传字体文件7.5
-      if (this.options[this.selectedOption - 1].text == this.selectedFontFileName) {
-        formData.append("font_file", this.fontFile);
-      }
-      formData.append("background_image", this.backgroundImage);
-      formData.append("font_size", this.fontSize);
-      formData.append("line_spacing", this.lineSpacing);
-      formData.append("fill", this.fill);
-      if (this.width) {
-        formData.append("width", this.width);
-      }
-      if (this.height) {
-        formData.append("height", this.height);
-      }
-      formData.append("top_margin", this.marginTop);
-      formData.append("bottom_margin", this.marginBottom);
-      formData.append("left_margin", this.marginLeft);
-      formData.append("right_margin", this.marginRight);
-      formData.append("line_spacing_sigma", this.lineSpacingSigma);
-      formData.append("font_size_sigma", this.fontSizeSigma);
-      formData.append("word_spacing_sigma", this.wordSpacingSigma);
-      formData.append("end_chars", this.endChars);
-      formData.append("perturb_x_sigma", this.perturbXSigma);
-      formData.append("perturb_y_sigma", this.perturbYSigma);
-      formData.append("perturb_theta_sigma", this.perturbThetaSigma);
-      formData.append("word_spacing", this.wordSpacing);
-      formData.append("preview", this.preview.toString());
-      formData.append("font_option", this.options[this.selectedOption - 1].text);
-      formData.append("strikethrough_length_sigma", this.strikethrough_length_sigma);
-      formData.append("strikethrough_angle_sigma", this.strikethrough_angle_sigma);
-      formData.append("strikethrough_width_sigma", this.strikethrough_width_sigma);
-      formData.append("strikethrough_probability", this.strikethrough_probability);
-      formData.append("strikethrough_width", this.strikethrough_width);
-      formData.append("ink_depth_sigma", this.ink_depth_sigma);
-      formData.append("pdf_save", pdf_save.toString());
-      formData.append("isUnderlined", this.isUnderlined.toString());
-      formData.append("enableEnglishSpacing", this.enableEnglishSpacing.toString());
-      
-      // 根据环境与按钮决定是否启用多页预览
-      const isDevEnv = process.env.NODE_ENV === 'development';
-      const allowFullPreview = isDevEnv && this.enableFullPreview && preview;
-      formData.append("full_preview", allowFullPreview.toString());
-
-      for (let pair of formData.entries()) {
-        console.log(pair[0] + ', ' + pair[1]);
-      }
-
-      const taskCreateResponse = await this.$http.post(
-        '/api/generate_handwriting',
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          withCredentials: true, //在跨域的时候，需要添加这句话，才能发送cookie 6.30
-        }
-      );
-
-      const taskId = taskCreateResponse.data?.task_id;
-      if (!taskId) {
-        throw new Error('未获取到任务ID');
-      }
-
-      this.uploadMessage = `任务已提交，正在生成中（Task ID: ${taskId}）…`;
-      try {
-        await this.waitForTaskViaWebSocket(taskId);
-      } catch (wsError) {
-        console.warn('WebSocket不可用，降级为轮询模式', wsError);
-        await this.pollGenerationTask(taskId);
-      }
-
-      const resultResponse = await this.$http.get(
-        `/api/generate_handwriting/task/${taskId}/result`,
-        {
-          // 预览模式下：开发环境使用json接收多页图片，生产环境使用blob接收单页图片
-          responseType: preview ? (allowFullPreview ? 'json' : 'blob') : 'blob',
-          withCredentials: true,
-        }
-      );
-      this.handleGenerationResultResponse(resultResponse);
-      } catch (error) {
-        if (error.response) {
-          // ── 队列已满：503 queue_full ────────────────────────────────
-          const errData = error.response.data;
-          if (
-            error.response.status === 503 &&
-            errData?.status === 'queue_full'
-          ) {
-            const waitSec = errData.estimated_wait_seconds || 30;
-            this.startQueueFullCountdown(waitSec);
-            this.message = '';
-            this.uploadMessage = '';
-            this.errorMessage = '';
-            return; // 不走通用错误展示
-          }
-          // ────────────────────────────────────────────────────────────
-          // console.log('已进入报错处理程序')
-          // 如果服务器返回了一个JSON错误消息
-          if (error.response.data instanceof Blob) {
-            let reader = new FileReader();
-            reader.onload = (e) => {
-              try {
-                let errorData = JSON.parse(e.target.result);
-                this.errorMessage = errorData.message;
-              } catch (parseError) {
-                // 如果解析失败，直接显示原始信息
-                this.errorMessage = e.target.result;
-                console.log('非JSON格式的错误数据：', e.target.result);
-              }
-              this.message = '';
-              this.uploadMessage = '';
-              console.log('错误信息：', this.errorMessage);
-              console.log(error);
-            };//注意，这里只能使用箭头函数，不然this指向全局对象window，6.30
-            reader.readAsText(error.response.data);
-          } else {
-            this.errorMessage = error.response.data?.message || '生成失败，请稍后重试';
-            // this.errorMessage = error.response.data.message;
-            this.message = '';
-            this.uploadMessage = '';
-          }
-        } else {
-          // 如果没有从服务器收到响应
-          this.errorMessage = error.message || '网络错误，请稍后再试';
-          this.message = '';
+    async handleGenerationError(error) {
+      if (error.response) {
+        const errData = error.response.data;
+        if (error.response.status === 503 && errData?.status === 'queue_full') {
+          this.startQueueFullCountdown(errData.estimated_wait_seconds || 30);
           this.uploadMessage = '';
+          return;
         }
-      } finally {
-        // 重置生成状态，但保持冷却状态
-        this.isGenerating = false;
-        // 冷却定时器会自动处理冷却状态的重置
+        if (errData instanceof Blob) {
+          this.errorMessage = await this.blobErrorMessage(errData, '生成失败，请稍后重试');
+        } else {
+          this.errorMessage = errData?.message || '生成失败，请稍后重试';
+        }
+      } else {
+        this.errorMessage = error.message || '网络错误，请稍后再试';
       }
+      this.message = '';
+      this.uploadMessage = '';
+    },
+    startCooldownTimer() {
+      this.remainingCooldown = Math.ceil(this.generateCooldown / 1000);
+      this.isInCooldownPeriod = true;
+      if (this.cooldownTimer) clearInterval(this.cooldownTimer);
+      this.cooldownTimer = setInterval(() => {
+        this.remainingCooldown -= 1;
+        if (this.remainingCooldown <= 0) {
+          this.isInCooldownPeriod = false;
+          clearInterval(this.cooldownTimer);
+          this.cooldownTimer = null;
+        }
+      }, 1000);
+    },
+    startQueueFullCountdown(seconds) {
+      if (this.queueFullTimer) clearInterval(this.queueFullTimer);
+      this.queueFullTotal = seconds;
+      this.queueFullCountdown = seconds;
+      this.queueFullTimer = setInterval(() => {
+        this.queueFullCountdown -= 1;
+        if (this.queueFullCountdown <= 0) {
+          this.queueFullCountdown = 0;
+          clearInterval(this.queueFullTimer);
+          this.queueFullTimer = null;
+        }
+      }, 1000);
+    },
+    prevPage() {
+      if (this.currentPreviewIndex > 0) this.currentPreviewIndex -= 1;
+    },
+    nextPage() {
+      if (this.currentPreviewIndex < this.previewImages.length - 1) this.currentPreviewIndex += 1;
+    },
+    toggleFullPreview() {
+      this.enableFullPreview = !this.enableFullPreview;
     },
     savePreset() {
+      const data = {};
+      SETTINGS_KEYS.forEach((item) => {
+        data[item] = this[item];
+        localStorage.setItem(item, JSON.stringify(this[item]));
+      });
+      localStorage.setItem('myPreset', JSON.stringify(data));
+      this.message = '设置已保存';
+    },
+    loadPreset() {
+      const dataString = localStorage.getItem('myPreset');
+      if (!dataString || dataString === 'undefined') {
+        this.errorMessage = '没有找到保存的设置';
+        return;
+      }
       try {
-        let data = {};
-        this.localStorageItems.forEach(item => {
-          data[item] = this[item];
+        const data = JSON.parse(dataString);
+        Object.keys(data).forEach((item) => {
+          this[item] = data[item];
         });
-        // 将对象转换为 JSON 格式的字符串
-        let dataString = JSON.stringify(data);
-
-        // 将字符串存储到 localStorage 中
-        localStorage.setItem('myPreset', dataString);
-
-        this.$swal.fire({
-          icon: 'success',
-          title: '预设设置保存成功！',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        this.message = '设置已载入';
       } catch (error) {
-        console.error('保存预设设置失败:', error);
-        this.$swal.fire({
-          icon: 'error',
-          title: '保存预设设置失败',
-        });
+        this.errorMessage = '载入设置失败';
       }
     },
     resetSettings() {
-      // this.text = '';13213不能删除，会导致文字为空，但是输入框没有清除
       this.fontFile = null;
       this.backgroundImage = null;
+      this.sourceFile = null;
+      this.selectedSourceFileName = '';
+      this.sourceContentFormat = 'plain';
       this.fontSize = 124;
       this.lineSpacing = 200;
-      this.fill = "(0, 0, 0, 255)";
+      this.fill = '(0, 0, 0, 255)';
       this.width = 2481;
       this.height = 3507;
       this.marginTop = 50;
@@ -1372,779 +926,405 @@ export default {
       this.ink_depth_sigma = 30;
       this.isUnderlined = true;
       this.enableEnglishSpacing = false;
-      this.errorMessage = '';
-      this.message = '';
-      this.uploadMessage = '';
+      this.outputFormat = 'pdf';
       this.selectedFontFileName = '';
       this.selectedImageFileName = '';
       this.selectedOption = '1';
-      this.previewImage = "/default1.webp";
+      this.previewImage = '/default1.webp';
+      this.previewImages = [];
+      this.currentPreviewIndex = 0;
+      this.message = '设置已重置';
+      this.errorMessage = '';
+      this.uploadMessage = '';
     },
-    loadPreset() {
-      try {
-        // 从 localStorage 中获取字符串
-        let dataString = localStorage.getItem('myPreset');
-
-        if (dataString === null || dataString === "undefined") {
-          this.$swal.fire({
-            icon: 'info',
-            title: '没有找到保存的预设设置',
-          });
-          return;
-        }
-
-        // 将字符串转换回对象
-        let data = JSON.parse(dataString);
-        Object.keys(data).forEach(item => {
-          this[item] = data[item];
-        });
-
-        this.$swal.fire({
-          icon: 'success',
-          title: '预设设置加载成功！',
-          timer: 2000,
-          showConfirmButton: false,
-        });
-      } catch (error) {
-        console.error('加载预设设置失败:', error);
-        this.$swal.fire({
-          icon: 'error',
-          title: '加载预设设置失败，请检查保存的数据是否有效',
-        });
-      }
-    },
-    onBackgroundImageChange(event) {
-      // 当用户选择了一个新的背景图片文件时，更新 selectedImageFileName，由于这边直接触发函数了，所以localstorage可以在这里修改，
-      //之前因为文字不能触发函数，所以要放在watch里面
-      this.selectedImageFileName = event.target.files[0].name;
-      this.backgroundImage = event.target.files[0];
-      // 由于文件无法在浏览器存储，所以下面的代码无效 7.15
-      // localStorage.setItem('backgroundImage', JSON.stringify(this.backgroundImage));
-      // if (localStorage.getItem('backgroundImage')) {
-      //   console.log('Data successfully saved to localStorage.');
-      // } else {
-      //   console.log('Failed to save to localStorage.');
-      // }
-
-      this.previewImage = URL.createObjectURL(event.target.files[0]);
-      Swal.fire({
-        title: '你希望自动识别页面的四周边距吗？（尽量不要上传带有alpha透明通道的图片）',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: '确定',
-        cancelButtonText: '取消'
-      }).then((result) => {
-        if (result.isConfirmed) {
-          let formData = new FormData();
-          formData.append('file', this.backgroundImage);  // 'file' 是你在服务器端获取文件数据时的 key
-          this.isLoading = true;
-          this.$http.post(
-            '/api/imagefileprocess',
-            formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data'
-            }
-          })
-            .then(response => {
-              this.marginLeft = response.data.marginLeft;
-              this.marginRight = response.data.marginRight;
-              this.marginTop = response.data.marginTop - this.lineSpacing;
-              this.marginBottom = response.data.marginBottom;
-              this.lineSpacing = response.data.lineSpacing;
-              this.message = '背景图片已加载。';
-              this.errorMessage = '';
-              this.uploadMessage = '';
-              this.isLoading = false;
-            })
-            .catch(error => {
-              console.error(error);
-              this.errorMessage = error.response.data.error;
-              this.message = '';
-              this.uploadMessage = '';
-              this.isLoading = false;
-            });
-        }
-      })
-    },
-    onFontChange(event) {
-      // 当用户选择了一个新的字体文件时，更新 selectedFontFileName
-      this.selectedFontFileName = event.target.files[0].name;
-      this.fontFile = event.target.files[0];
-      // 创建一个新的 option 对象
-      const newOption = {
-        value: String(this.options.length + 1), // 使用 options 数组的长度 + 1 作为新选项的 value
-        text: this.selectedFontFileName // 使用字体文件名作为新选项的 text
-      };
-
-      // 将新选项添加到 options 数组中
-      this.options.push(newOption);
-
-      // 将 selectedOption 设为新选项的 value，这样下拉菜单就会自动更新为新添加的字体
-      this.selectedOption = newOption.value;
-
-    },
-    triggerImageFileInput() {
-      if (!this.isDimensionSpecified) {
-        this.$refs.imageFileInput.click();
-      }
-      else {
-        Swal.fire({
-          title: '需要先清空高度宽度才能选择图片',
-          text: '选择图片后需要点击按钮左下角的X删除图片才能再输入宽度高度',
-          icon: 'question',
-          showCancelButton: true,
-          confirmButtonText: '清空宽度高度',
-          cancelButtonText: '取消'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            this.width = null
-            this.height = null
-            this.$refs.imageFileInput.click();
-          }
-        })
-      }
-    },
-    triggerFontFileInput() {
-      this.$refs.fontFileInput.click();
-    },
-    //清空图像按钮对应的函数
-    clearImage() {
-      // 清空存储图像信息的变量
-      this.selectedImageFileName = null;
-      this.backgroundImage = null;
-      // 清空文件输入框
-      this.$refs.imageFileInput.value = null;
-    },
-    clearDimensions() {
-      console.log('清空图像尺寸');
-      this.width = null
-      this.height = null
-    },
-
-    // 检查是否为生产网站
-    isProductionSite() { // localhost:8080 handwrite.14790897.xyz
-      return window.location.hostname === 'handwrite.14790897.xyz';
-    },
-
-    // 估算页数
-    estimatePageCount() {
-      if (!this.text || this.text.length === 0) {
-        return 0;
-      }
-
-      // 获取页面参数
-      const pageWidth = this.width || (this.backgroundImage ? 2481 : 2481); // 默认宽度
-      const pageHeight = this.height || (this.backgroundImage ? 3507 : 3507); // 默认高度
-      const fontSize = parseInt(this.fontSize) || 20;
-      const lineSpacing = parseInt(this.lineSpacing) || 30;
-      const marginTop = parseInt(this.marginTop) || 50;
-      const marginBottom = parseInt(this.marginBottom) || 50;
-      const marginLeft = parseInt(this.marginLeft) || 50;
-      const marginRight = parseInt(this.marginRight) || 50;
-
-      // 计算可用区域
-      const usableWidth = pageWidth - marginLeft - marginRight;
-      const usableHeight = pageHeight - marginTop - marginBottom;
-
-      // 估算每行字符数（粗略估算，中文字符按字体大小计算）
-      const avgCharWidth = fontSize * 0.8; // 中文字符宽度约为字体大小的0.8倍
-      const charsPerLine = Math.floor(usableWidth / avgCharWidth);
-
-      // 估算每页行数
-      const linesPerPage = Math.floor(usableHeight / lineSpacing);
-
-      // 估算每页字符数
-      const charsPerPage = charsPerLine * linesPerPage;
-
-      // 计算页数
-      const estimatedPages = Math.ceil(this.text.length / charsPerPage);
-
-      console.log('页数估算:', {
-        textLength: this.text.length,
-        charsPerLine,
-        linesPerPage,
-        charsPerPage,
-        estimatedPages
-      });
-
-      return estimatedPages;
-    },
-
-    // 显示页数限制对话框
-    async showPageLimitDialog(estimatedPages) {
-      try {
-        const result = await this.$swal.fire({
-          title: '页数限制提醒',
-          html: `
-            <div style="text-align: left; line-height: 1.6;">
-              <p><strong>检测到您的文本预计会生成 ${estimatedPages} 页</strong></p>
-              <p>由于服务器资源限制，在 <strong>handwrite.14790897.xyz</strong> 网站上单次最多只能生成 <strong>10页</strong>。</p>
-              <p>如果您选择继续：</p>
-              <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>系统将只生成前 10 页内容</li>
-                <li>超出部分将被自动截断</li>
-                <li>建议您分批处理长文本</li>
-              </ul>
-              <p style="color: #666; font-size: 14px;">
-                💡 提示：您可以将长文本分成多个部分，分别生成，或者自行搭建本项目来处理更长的文本
-              </p>
-              <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                注：此限制仅适用于 handwrite.14790897.xyz 网站
-              </p>
-            </div>
-          `,
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonText: '继续生成（前10页）',
-          cancelButtonText: '取消',
-          confirmButtonColor: '#f39c12',
-          cancelButtonColor: '#d33',
-          width: '500px'
-        });
-
-        return result.isConfirmed;
-      } catch (error) {
-        console.error('SweetAlert2 error:', error);
-        // 降级到原生 confirm
-        return confirm(`检测到您的文本预计会生成 ${estimatedPages} 页。\n\n由于服务器资源限制，在 handwrite.14790897.xyz 网站上单次最多只能生成 10页。\n\n是否继续生成前10页？`);
-      }
-    },
-
-    // 截断文本到指定页数
-    truncateTextToPages(maxPages) {
-      if (!this.text || this.text.length === 0) {
-        return;
-      }
-
-      // 获取页面参数
-      const pageWidth = this.width || (this.backgroundImage ?2481 : 2481); // 默认宽度
-      const pageHeight = this.height || (this.backgroundImage ? 3507 : 3507); // 默认高度
-      const fontSize = parseInt(this.fontSize) || 20;
-      const lineSpacing = parseInt(this.lineSpacing) || 30;
-      const marginTop = parseInt(this.marginTop) || 50;
-      const marginBottom = parseInt(this.marginBottom) || 50;
-      const marginLeft = parseInt(this.marginLeft) || 50;
-      const marginRight = parseInt(this.marginRight) || 50;
-
-      // 计算可用区域
-      const usableWidth = pageWidth - marginLeft - marginRight;
-      const usableHeight = pageHeight - marginTop - marginBottom;
-
-      // 估算每行字符数
-      const avgCharWidth = fontSize * 0.8;
-      const charsPerLine = Math.floor(usableWidth / avgCharWidth);
-
-      // 估算每页行数
-      const linesPerPage = Math.floor(usableHeight / lineSpacing);
-
-      // 计算每页字符数
-      const charsPerPage = charsPerLine * linesPerPage;
-
-      // 计算最大字符数
-      const maxChars = charsPerPage * maxPages;
-
-      // 截断文本
-      if (this.text.length > maxChars) {
-        const originalLength = this.text.length;
-        this.text = this.text.substring(0, maxChars);
-
-        console.log('文本截断:', {
-          originalLength,
-          truncatedLength: this.text.length,
-          maxPages,
-          charsPerPage,
-          maxChars
-        });
-
-      }
-    },
-
-    // 启动冷却时间定时器
-    startCooldownTimer() {
-      // 清除现有定时器
-      if (this.cooldownTimer) {
-        clearInterval(this.cooldownTimer);
-      }
-
-      // 设置初始冷却状态
-      this.isInCooldownPeriod = true;
-      this.remainingCooldown = Math.ceil(this.generateCooldown / 1000);
-
-      // 启动新定时器，每1秒更新一次显示
-      this.cooldownTimer = setInterval(() => {
-        const currentTime = Date.now();
-        const timeSinceLastGenerate = currentTime - this.lastGenerateTime;
-        const remaining = this.generateCooldown - timeSinceLastGenerate;
-
-        if (remaining <= 0) {
-          // 冷却结束
-          this.isInCooldownPeriod = false;
-          this.remainingCooldown = 0;
-          clearInterval(this.cooldownTimer);
-          this.cooldownTimer = null;
-        } else {
-          // 更新剩余时间
-          this.remainingCooldown = Math.ceil(remaining / 1000);
-        }
-      }, 1000);
-    },
-
   },
-
-  // 组件销毁时清理定时器
-  beforeUnmount() {
-    if (this.cooldownTimer) {
-      clearInterval(this.cooldownTimer);
-      this.cooldownTimer = null;
-    }
-  },
-
 };
 </script>
 
-
 <style scoped>
-.container {
+.handwriting-workspace {
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(34, 77, 86, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(34, 77, 86, 0.05) 1px, transparent 1px),
+    #f7f3ec;
+  background-size: 26px 26px;
+  color: #203038;
+  padding: 24px;
+}
+
+.workspace-shell {
   display: grid;
-  grid-template-areas:
-    "form image"
-    "button image"
-    "message image";
-  grid-template-columns: 1fr 2fr;
-}
-
-#message {
-  grid-area: message;
-  padding: 20px;
-  box-sizing: border-box;
-  overflow: auto;
-  /* box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); */
-}
-
-#form {
-  grid-area: form;
-  flex: 1 0 300px;
-  max-width: 650px;
-  column-count: auto;
-  column-width: 200px;
-  column-gap: 1em;
-  width: 80vw;
-  padding: 20px;
+  grid-template-columns: minmax(360px, 560px) minmax(420px, 1fr);
+  gap: 24px;
+  max-width: 1580px;
   margin: 0 auto;
-  box-sizing: border-box;
-  overflow: auto;
-  box-shadow: 0 -1px 5px rgba(0, 0, 0, 0.1);
 }
 
-#form label {
-  margin-bottom: 10px;
+.control-column,
+.preview-column {
+  min-width: 0;
 }
 
-#form input,
-#form textarea {
-  width: 50%;
-  padding: 10px;
-  border-radius: 5px;
-  border: 1px solid #ddd;
-  box-sizing: border-box;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+.workspace-header {
+  margin-bottom: 18px;
 }
 
-
-/* 想让标签和输入在一行显示，但是没有用 7.14 */
-.label-container {
-  display: flex;
-  /* justify-content: center; */
-  align-items: center;
-}
-.buttons{
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+.workspace-header p,
+.preview-header p {
+  margin: 0 0 4px;
+  color: #62757c;
+  font-size: 0.9rem;
 }
 
-.document-converter {
-  grid-column: 1 / 2;
-  margin: 12px 20px;
-  padding: 16px;
-  border: 1px solid #d8e2ee;
-  border-radius: 8px;
-  background: #f8fbff;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
-}
-
-.document-converter-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.document-converter-header h2 {
+.workspace-header h1,
+.preview-header h2 {
   margin: 0;
-  font-size: 1.1rem;
-  color: #0b4f71;
+  font-size: clamp(1.45rem, 2.5vw, 2.2rem);
+  line-height: 1.18;
+  color: #182a31;
 }
 
-.document-converter-header span {
-  font-size: 0.85rem;
-  color: #6c757d;
+.panel,
+.actions-panel,
+.preview-column {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(32, 48, 56, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(31, 46, 54, 0.08);
 }
 
-.document-converter-body,
-.document-converter-actions {
+.panel {
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.panel-heading,
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.panel-heading span {
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.panel-heading small {
+  color: #6a7c83;
+}
+
+.notice {
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+}
+
+.notice-success {
+  background: #edf8f0;
+  color: #1f6635;
+  border: 1px solid #bfe1c8;
+}
+
+.notice-info {
+  background: #eef6fb;
+  color: #255978;
+  border: 1px solid #bad7e8;
+}
+
+.notice-error {
+  background: #fff0ef;
+  color: #9c2d24;
+  border: 1px solid #efc2bd;
+}
+
+.source-upload-target {
+  position: relative;
+  width: 100%;
+  min-height: 96px;
+}
+
+.source-upload-target.disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.source-file-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.source-file-input:disabled {
+  cursor: not-allowed;
+}
+
+.drop-zone {
+  width: 100%;
+  min-height: 96px;
+  border: 1.5px dashed #7fa0a7;
+  border-radius: 8px;
+  background: #fbfaf6;
+  color: #203038;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.source-upload-target:hover:not(.disabled) .drop-zone,
+.source-upload-target:focus-within:not(.disabled) .drop-zone {
+  border-color: #0f6b7a;
+  background: #f2faf9;
+  transform: translateY(-1px);
+}
+
+.drop-zone span {
+  color: #6c7c82;
+}
+
+.source-meta,
+.source-actions,
+.asset-row,
+.toggle-row,
+.actions-panel,
+.page-nav {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
-.document-converter-actions select {
-  margin-left: 6px;
-  padding: 8px;
-  border: 1px solid #b9c6d3;
-  border-radius: 5px;
+.source-meta {
+  margin-top: 10px;
+  color: #496068;
+  justify-content: space-between;
+}
+
+.source-actions {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.source-meta button,
+.link-button,
+.source-actions button {
+  border: none;
+  background: transparent;
+  color: #0f6b7a;
+  padding: 0;
+}
+
+.source-actions button {
+  border: 1px solid #b9c8cb;
+  border-radius: 8px;
+  background: #ffffff;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.text-editor {
+  width: 100%;
+  min-height: 280px;
+  margin-top: 14px;
+  border: 1px solid #cbd7d9;
+  border-radius: 8px;
+  padding: 14px;
+  resize: vertical;
+  line-height: 1.65;
+  font-size: 1rem;
+  color: #203038;
+  background: #fffefa;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+label {
+  color: #3a5058;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.settings-grid input,
+.settings-grid select {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 6px;
+  border: 1px solid #cbd7d9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: white;
+  color: #203038;
+}
+
+.asset-row {
+  margin-top: 14px;
+  color: #62757c;
+}
+
+.asset-row button,
+.secondary-action,
+.primary-action,
+.page-nav button {
+  border: 1px solid #b9c8cb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #203038;
+  min-height: 40px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.asset-row button:hover:not(:disabled),
+.secondary-action:hover:not(:disabled),
+.page-nav button:hover:not(:disabled) {
+  border-color: #0f6b7a;
+  color: #0f6b7a;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.toggle-row {
+  margin-top: 14px;
+  justify-content: space-between;
+}
+
+.toggle-row input {
+  margin-right: 6px;
+}
+
+.advanced-settings {
+  margin-top: 14px;
+  border-top: 1px solid #e1e7e8;
+  padding-top: 12px;
+}
+
+.advanced-settings summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #0f6b7a;
+}
+
+.actions-panel {
+  padding: 14px;
+}
+
+.primary-action {
+  background: #0f6b7a;
+  border-color: #0f6b7a;
+  color: white;
+}
+
+.primary-action.export {
+  background: #243f49;
+  border-color: #243f49;
+  flex: 1 1 160px;
+}
+
+.secondary-action {
+  flex: 0 0 auto;
+}
+
+.preview-column {
+  padding: 24px;
+  position: sticky;
+  top: 18px;
+  align-self: start;
+}
+
+.paper-preview {
+  min-height: 70vh;
+  border-radius: 8px;
+  border: 1px solid #d8e0e2;
+  background: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+}
+
+.paper-preview img {
+  width: min(100%, 760px);
+  height: auto;
+  border: 1px solid #e2e5e4;
+  box-shadow: 0 18px 30px rgba(20, 32, 36, 0.10);
   background: white;
 }
 
-.document-file-name {
-  display: inline-block;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #0b4f71;
-  font-size: 0.9rem;
+.page-nav span {
+  color: #4d6067;
+  font-weight: 700;
 }
 
-.document-file-button,
-.document-convert-button,
-.document-clear-button {
-  padding: 9px 12px;
-  border-radius: 5px;
-  border: none;
-  color: white;
-  background: #4285f4;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.document-convert-button {
-  background: #0b7f61;
-}
-
-.document-clear-button {
-  background: #6c757d;
-}
-
-.document-convert-button:disabled {
-  background: #cccccc;
-  cursor: not-allowed;
-}
-
-.document-converter-note {
-  margin: 0;
-  color: #4d5b68;
-  font-size: 0.86rem;
-  line-height: 1.5;
-}
-
-.buttons button {
-  grid-area: button;
-  padding: 10px 10px;
-  border-radius: 5px;
-  border: none;
-  background: #007BFF;
-  color: white;
-  cursor: pointer;
-  transition: all 0.3s ease-in-out;
-  font-weight: bold;
-  /* 使文本更粗 */
-  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-  /* 添加阴影效果 */
-  outline: none;
-  /* 移除默认的焦点轮廓 */
-  margin-right: 10px;
-  /* 为每个按钮添加右边距 */
-  margin-top: 10px;
-}
-
-.buttons button:last-child {
-  margin-right: 0;
-  /* 为最后一个按钮移除右边距，避免额外空间 */
-}
-
-.buttons button:hover {
-  background: #0056b3;
-  transform: scale(1.05);
-  /* 悬停时按钮轻微放大 */
-}
-
-.buttons button:active {
-  background: #003d73;
-  /* 按下按钮时更改背景色 */
-  transform: scale(0.95);
-  /* 按下按钮时按钮轻微缩小 */
-}
-
-.buttons button:disabled {
-  background: #cccccc;
-  /* 禁用按钮时的背景色 */
-  cursor: not-allowed;
-  /* 禁用按钮时的鼠标样式 */
-}
-
-
-.preview {
-  /* flex: 1; */
-  padding: 20px;
-  box-sizing: border-box;
-  grid-area: image;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-  min-width: 100px;
-  min-height: 200px;
-
-}
-
-.preview img {
-  max-width: 100%;
-  height: auto;
-  object-fit: cover;
-  position: sticky;
-  top: 0;
-}
-
-input[type="number"],
-input[type="text"],
-input[type="file"] {
-  transition: all 0.3s ease;
-  /* 过渡效果 */
-}
-
-input[type="number"]:hover,
-input[type="text"]:hover,
-input[type="file"]:hover {
-  transform: scale(1.05);
-  /* 放大输入框 */
-  box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.3);
-  /* 添加阴影效果 */
-}
-
-/* >>> .TextInput{ */
-.container_file {
+.workspace-footer {
+  max-width: 1580px;
+  margin: 20px auto 0;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 400px;
-  margin: auto;
-}
-
-.container_file label {
-  font-size: 1.2rem;
-  font-weight: 500;
-}
-
-.container_file button {
-  padding: 10px 5px;
-  font-size: 0.9rem;
-  color: white;
-  background-color: #4285f4;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  margin: 0 auto;
-}
-
-.container_file button:disabled {
-  background-color: grey;
-}
-
-.container_file span {
-  /* display: block; */
-  margin-top: 5px;
-  font-size: 0.9rem;
-  color: #444;
-}
-
-/* } */
-.styled-select {
-  padding: 10px;
-  border: none;
-  border-radius: 5px;
-  color: white;
-  background-color: #4285f4;
-  font-size: 1rem;
-  transition: all 0.3s ease-in-out;
-
-
-}
-
-.styled-select:hover {
-  transform: scale(1.05);
-  /* 放大输入框 */
-  box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.3);
-}
-
-.styled-select:focus {
-  outline: none;
-}
-
-.button-container {
-  display: flex;
-  justify-content: space-around;
-  position: relative;
-}
-
-.clear-button {
-  position: relative;
-  top: 5px;
-  right: 5px;
-  width: 12px;
-  height: 12px;
-  cursor: pointer;
-}
-
-.clear-button-line {
-  position: absolute;
-  left: 1px;
-  width: 10px;
-  height: 2px;
-  background-color: #000;
-}
-
-.clear-button-line:first-child {
-  top: 5px;
-  transform: rotate(45deg);
-}
-
-.clear-button-line:last-child {
-  top: 5px;
-  transform: rotate(-45deg);
-}
-
-.font-selection {
-  display: flex;
-  justify-content: space-around;
-}
-
-.loader {
-  border: 16px solid #f3f3f3;
-  /* Light grey */
-  border-top: 16px solid #3498db;
-  /* Blue */
-  border-radius: 50%;
-  width: 120px;
-  height: 120px;
-  animation: spin 2s linear infinite;
-  position: absolute;
-  /* 设置动画为绝对定位 */
-  top: 50%;
-  /* 将动画定位在父元素的中心 */
-  left: 50%;
-  transform: translate(-50%, -50%);
-  /* 用 transform 属性将动画元素的中心对准父元素的中心 */
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-.image-container {
-  /* display: flex;
+  gap: 14px;
   justify-content: center;
-  align-items: center; */
-  position: relative;
-  margin-bottom: 15px;
+  color: #667980;
 }
 
-.close {
-  border: none !important;
+.workspace-footer a {
+  color: #0f6b7a;
+  font-weight: 700;
 }
 
-.button-disabled {
-  background-color: #ccc !important;
-  color: #666 !important;
-  cursor: not-allowed !important;
-}
-
-.optionUnderline {
-  margin: 0;
-  padding: 0;
-  width: 10px;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  box-sizing: content-box !important;
-}
-
-.optionEnglishSpacing {
-  margin: 0;
-  padding: 0;
-  width: 10px;
-  padding: 0 !important;
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
-  box-sizing: content-box !important;
-}
-
-.freeprompt {
-  font-size: 0.8rem;
-  color: #e70808;
-  text-align: center;
-  margin-top: 10px;
-}
-@media (max-width: 1000px) {
-  .container {
-    /* flex-direction: column; */
-    grid-template-areas:
-      "form"
-      "button"
-      "message"
-      "image";
+@media (max-width: 1080px) {
+  .workspace-shell {
     grid-template-columns: 1fr;
   }
 
-  #form,
-  .preview,
-  .document-converter {
-    flex: 1 0 100%;
-  }
-
-  .document-converter {
-    grid-column: 1;
+  .preview-column {
+    position: static;
   }
 }
 
-/* 生成状态提示样式 */
-.generation-status {
-  margin: 15px 0;
-  padding: 10px;
-  border-radius: 5px;
-  text-align: center;
-  font-weight: bold;
-  animation: pulse 2s infinite;
+@media (max-width: 680px) {
+  .handwriting-workspace {
+    padding: 14px;
+  }
+
+  .settings-grid,
+  .settings-grid.compact {
+    grid-template-columns: 1fr;
+  }
+
+  .paper-preview {
+    min-height: 420px;
+    padding: 10px;
+  }
 }
-
-.status-generating {
-  background-color: #e3f2fd;
-  color: #1976d2;
-  border: 1px solid #bbdefb;
-}
-
-.status-cooldown {
-  background-color: #fff3e0;
-  color: #f57c00;
-  border: 1px solid #ffcc02;
-}
-
-/* 队列已满提示 - 已迁移到 Swal Toast */
-
 </style>

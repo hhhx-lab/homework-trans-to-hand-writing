@@ -22,9 +22,9 @@
             <div class="cover-icon">
               <img src="/favicon-96x96.png" alt="logo" class="cover-img" />
             </div>
-            <div class="cover-title">手写文字生成</div>
+            <div class="cover-title">手写体工作台</div>
             <div class="cover-divider"></div>
-            <div class="cover-sub">在线生成手写图片与 PDF</div>
+            <div class="cover-sub">文档整理与手写导出</div>
           </div>
           <!-- 书脊阴影线 -->
           <div class="spine-shadow"></div>
@@ -49,8 +49,8 @@
           <div class="brand-icon">
             <img src="/favicon-96x96.png" alt="logo" class="brand-img" />
           </div>
-          <div class="brand-name">手写文字生成</div>
-          <div class="brand-sub">在线生成手写图片与 PDF</div>
+          <div class="brand-name">手写体工作台</div>
+          <div class="brand-sub">文档整理与手写导出</div>
         </div>
       </transition>
 

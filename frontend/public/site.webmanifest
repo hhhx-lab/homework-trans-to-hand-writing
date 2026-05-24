@@ -1,6 +1,6 @@
 {
-  "name": "MyWebSite",
-  "short_name": "MySite",
+  "name": "作业文档转手写体工作台",
+  "short_name": "手写工作台",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

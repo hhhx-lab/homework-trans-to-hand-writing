@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 import time
 from typing import Any, Optional, Union
 
@@ -18,7 +19,7 @@ from fastapi import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 # run_in_threadpool 已移除：handwrite() 返回惰性生成器（map 对象），
 # 真正的 CPU 密集渲染在后续 for 循环消费生成器时才发生，
@@ -48,7 +49,15 @@ from docx import Document
 # 图片处理模块
 from identify import identify_distance
 from handwriting_document import DEFAULT_FONT_NAME, convert_to_handwritten
+from handwriting_markdown_renderer import (
+    HandwritingRenderConfig,
+    render_markdown_handwriting,
+    write_images_to_docx_bytes,
+)
+from markdown_math import editable_docx_bytes, normalize_math_markdown
+from mineru_adapter import STAGING_DIR as MINERU_STAGING_DIR
 from pdf import generate_pdf
+from source_extract import SUPPORTED_SOURCE_SUFFIXES, extract_source_to_markdown
 from werkzeug.utils import secure_filename
 
 
@@ -241,11 +250,6 @@ from functools import wraps
 # 定时清理文件 10.28
 import schedule_clean
 
-# sentry 错误报告7.7
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-
 # 限制请求速率 7.9
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -302,19 +306,6 @@ font_file_names = [
     for f in os.listdir(font_assets_dir)
     if os.path.isfile(os.path.join(font_assets_dir, f)) and f.endswith(".ttf")
 ]
-# sentry部分 7.7
-sentry_sdk.init(
-    dsn="https://ed22d5c0e3584faeb4ae0f67d19f68aa@o4505255803551744.ingest.sentry.io/4505485583253504",
-    integrations=[
-        StarletteIntegration(),
-        FastApiIntegration(),
-    ],
-    # Set traces_sample_rate to 1.0 to capture 100%
-    # of transactions for performance monitoring.
-    # We recommend adjusting this value in production.
-    traces_sample_rate=1.0,
-)
-
 # 启动计划任务线程, 定时清理
 schedule_clean.start_schedule_thread()
 
@@ -563,6 +554,131 @@ def model_to_dict(model):
     return model.dict(exclude_none=True)
 
 
+def parse_rgb_fill(raw_fill) -> tuple[int, int, int]:
+    if isinstance(raw_fill, (tuple, list)) and len(raw_fill) >= 3:
+        return tuple(max(0, min(255, int(v))) for v in raw_fill[:3])
+    if isinstance(raw_fill, str):
+        values = []
+        for part in raw_fill.strip().strip("()").split(","):
+            part = part.strip()
+            if part:
+                try:
+                    values.append(int(float(part)))
+                except ValueError:
+                    pass
+        if len(values) >= 3:
+            return tuple(max(0, min(255, v)) for v in values[:3])
+    return (0, 0, 0)
+
+
+def normalize_output_format(data: dict[str, Any]) -> str:
+    output_format = (data.get("output_format") or "").lower()
+    if output_format not in {"pdf", "docx", "zip"}:
+        output_format = "pdf" if data.get("pdf_save") == "true" else "zip"
+    if data.get("pdf_save") == "true":
+        output_format = "pdf"
+    return output_format
+
+
+async def build_image_result_response(
+    images,
+    *,
+    is_preview: bool,
+    full_preview: str,
+    output_format: str,
+    progress_hook=None,
+) -> Response:
+    def report_progress(stage, message, progress):
+        if progress_hook is not None:
+            progress_hook(stage=stage, message=message, progress=progress)
+
+    project_temp_base = "./temp"
+    os.makedirs(project_temp_base, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(dir=project_temp_base)
+    image_paths: list[Path] = []
+    try:
+        preview_images_base64 = []
+        try:
+            total_images = len(images)
+            if total_images <= 0:
+                total_images = 1
+        except TypeError:
+            total_images = None
+
+        for i, im in enumerate(images):
+            if total_images is None:
+                dynamic_progress = min(90, 60 + min(i, 30))
+                report_progress("rendering", f"正在处理第 {i + 1} 页", dynamic_progress)
+            else:
+                dynamic_progress = min(90, 60 + int((i / total_images) * 25))
+                report_progress("rendering", f"正在处理第 {i + 1}/{total_images} 页", dynamic_progress)
+
+            image_path = Path(temp_dir) / f"{i}.png"
+            if safe_save_and_close_image(im, str(image_path)):
+                logger.info("Image %s saved successfully", i)
+            else:
+                logger.error("Failed to save image %s", i)
+            image_paths.append(image_path)
+            del im
+
+            if is_preview:
+                image_data = image_path.read_bytes()
+                if full_preview == "false":
+                    report_progress("finalizing", "正在返回预览结果", 100)
+                    return Response(content=image_data, media_type="image/png")
+                preview_images_base64.append(base64.b64encode(image_data).decode("utf-8"))
+
+        if is_preview:
+            report_progress("finalizing", "正在返回预览结果", 100)
+            return JSONResponse({"status": "success", "images": preview_images_base64})
+
+        if output_format == "docx":
+            report_progress("packaging", "正在导出Word文件", 92)
+            docx_data = write_images_to_docx_bytes(image_paths)
+            report_progress("finalizing", "正在返回Word结果", 100)
+            return Response(
+                content=docx_data,
+                media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                headers={"Content-Disposition": "attachment; filename=images.docx"},
+            )
+
+        if output_format == "pdf":
+            report_progress("packaging", "正在导出PDF文件", 92)
+            pil_images = []
+            try:
+                for path in image_paths:
+                    img = Image.open(path)
+                    pil_images.append(img.copy())
+                    img.close()
+                temp_pdf_file_path = generate_pdf(images=pil_images)
+                pdf_data = Path(temp_pdf_file_path).read_bytes()
+            finally:
+                for img in pil_images:
+                    img.close()
+                if "temp_pdf_file_path" in locals() and temp_pdf_file_path and os.path.exists(temp_pdf_file_path):
+                    safe_remove_file(temp_pdf_file_path)
+            report_progress("finalizing", "正在返回PDF结果", 100)
+            return Response(
+                content=pdf_data,
+                media_type="application/pdf",
+                headers={"Content-Disposition": "attachment; filename=images.pdf"},
+            )
+
+        report_progress("packaging", "正在打包ZIP文件", 92)
+        zip_path = f"./temp/images_{time.time()}.zip"
+        shutil.make_archive(zip_path[:-4], "zip", temp_dir)
+        zip_data = Path(zip_path).read_bytes()
+        safe_remove_file(zip_path)
+        report_progress("finalizing", "正在返回ZIP结果", 100)
+        return Response(
+            content=zip_data,
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=images.zip"},
+        )
+    finally:
+        safe_remove_directory(temp_dir)
+
+
 async def generate_handwriting_impl(
     base_url: str,
     params: GenerateHandwritingParams,
@@ -600,18 +716,6 @@ async def generate_handwriting_impl(
         pass
     # try:
     # 先获取 form 数据
-    if len(data["text"]) > 10000 and (
-        base_url == "https://handwrite.sixiangjia.de/"
-        or base_url == "https://handwrite.sixiangjia.de/"
-    ):
-        # 请自己构建应用来运行而不是使用这个网页
-        return JSONResponse(
-            {
-                "status": "error",
-                "message": "The text is too long to process. If you want to use this service, please build your own application.",
-            },
-            status_code=500,
-        )
     # 如果存在height和width，就创建一个新的背景图     todo
     # height=int(data["height"]),
     # width=int(data["width"]),
@@ -789,8 +893,67 @@ async def generate_handwriting_impl(
         ink_depth_sigma=float(data["ink_depth_sigma"]),  # 墨水深度随机扰动
     )
 
+    output_format = normalize_output_format(data)
+    content_format = (data.get("content_format") or "plain").lower()
+    is_preview = data["preview"] == "true"
+    full_preview = data.get("full_preview", "true") if is_preview else "false"
+
+    if content_format == "markdown":
+        report_progress("rendering", "正在生成手写Markdown", 45)
+        text_to_generate = normalize_math_markdown(text_to_generate)
+        config = HandwritingRenderConfig(
+            line_spacing=int(data["line_spacing"]),
+            font_size=int(data["font_size"]),
+            left_margin=int(data["left_margin"]),
+            top_margin=int(data["top_margin"]),
+            right_margin=int(data["right_margin"]),
+            bottom_margin=int(data["bottom_margin"]),
+            word_spacing=int(data["word_spacing"]),
+            line_spacing_sigma=float(data["line_spacing_sigma"]),
+            font_size_sigma=float(data["font_size_sigma"]),
+            word_spacing_sigma=float(data["word_spacing_sigma"]),
+            perturb_x_sigma=float(data["perturb_x_sigma"]),
+            perturb_y_sigma=float(data["perturb_y_sigma"]),
+            perturb_theta_sigma=float(data["perturb_theta_sigma"]),
+            ink_depth_sigma=float(data["ink_depth_sigma"]),
+            fill=parse_rgb_fill(data.get("fill")),
+        )
+        images = render_markdown_handwriting(
+            text_to_generate,
+            background_image_obj,
+            font,
+            config,
+            progress_hook=lambda stage, message, progress: report_progress(stage, message, progress),
+        )
+        return await build_image_result_response(
+            images,
+            is_preview=is_preview,
+            full_preview=full_preview,
+            output_format=output_format,
+            progress_hook=lambda **kwargs: report_progress(
+                kwargs.get("stage", "rendering"),
+                kwargs.get("message", "正在处理"),
+                kwargs.get("progress", 50),
+            ),
+        )
+
     # 创建一个BytesIO对象，用于保存.zip文件的内容
     logger.info(f"data[pdf_save]: {data['pdf_save']}")
+    if output_format in {"pdf", "docx"} or is_preview:
+        report_progress("rendering", "正在生成手写图像", 45)
+        images = handwrite(text_to_generate, template)
+        return await build_image_result_response(
+            images,
+            is_preview=is_preview,
+            full_preview=full_preview,
+            output_format=output_format,
+            progress_hook=lambda **kwargs: report_progress(
+                kwargs.get("stage", "rendering"),
+                kwargs.get("message", "正在处理"),
+                kwargs.get("progress", 50),
+            ),
+        )
+
     if not data["pdf_save"] == "true":
         report_progress("rendering", "正在生成手写图像", 45)
         # handwrite() 返回惰性 map 对象，只做文本排版（毫秒级），
@@ -1245,6 +1408,76 @@ async def imagefileprocess(request: Request, file: UploadFile = File(...)):
         )
     else:
         return JSONResponse({"error": "Invalid file type"}, status_code=400)
+
+
+@app.get("/api/handwriting/mineru_files/{file_id}")
+async def serve_mineru_file(file_id: str):
+    if not re.match(r"^[a-f0-9]{32}\.pdf$", file_id):
+        return JSONResponse({"status": "error", "message": "Invalid file id"}, status_code=400)
+    path = MINERU_STAGING_DIR / file_id
+    if not path.exists():
+        return JSONResponse({"status": "error", "message": "File not found"}, status_code=404)
+    return FileResponse(path, media_type="application/pdf")
+
+
+@app.post("/api/handwriting/extract_source")
+@limiter.limit("60 per 5 minute")
+async def extract_handwriting_source(request: Request, file: UploadFile = File(...)):
+    if file is None or file.filename == "":
+        return JSONResponse({"status": "error", "message": "No file part in the request"}, status_code=400)
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in SUPPORTED_SOURCE_SUFFIXES:
+        return JSONResponse(
+            {"status": "error", "message": "只支持 PDF、Word、Markdown、TXT、RTF 文件"},
+            status_code=400,
+        )
+
+    project_temp_base = "./temp"
+    os.makedirs(project_temp_base, exist_ok=True)
+    temp_dir = tempfile.mkdtemp(dir=project_temp_base)
+    try:
+        safe_name = secure_filename(file.filename) or f"source{suffix}"
+        source_path = Path(temp_dir) / safe_name
+        source_path.write_bytes(await file.read())
+        result = await asyncio.to_thread(extract_source_to_markdown, source_path)
+        return JSONResponse(
+            {
+                "status": "success",
+                "markdown": result["markdown"],
+                "source": result.get("source"),
+                "warnings": result.get("warnings", []),
+                "metadata": result.get("metadata", {}),
+            }
+        )
+    except Exception as e:
+        logger.exception("Source extraction failed")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+    finally:
+        safe_remove_directory(temp_dir)
+
+
+@app.post("/api/handwriting/markdown_docx")
+@limiter.limit("60 per 5 minute")
+async def handwriting_markdown_docx(
+    request: Request,
+    markdown: str = Form(...),
+    filename: str = Form("standard_formula_draft.docx"),
+):
+    if not markdown.strip():
+        return JSONResponse({"status": "error", "message": "Markdown 内容不能为空"}, status_code=400)
+    try:
+        docx_data = await asyncio.to_thread(editable_docx_bytes, markdown)
+        safe_name = secure_filename(filename) or "standard_formula_draft.docx"
+        if not safe_name.lower().endswith(".docx"):
+            safe_name += ".docx"
+        return Response(
+            content=docx_data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={safe_name}"},
+        )
+    except Exception as e:
+        logger.exception("Editable DOCX generation failed")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 
 @app.post("/api/generate_handwritten_document")

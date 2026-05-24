@@ -33,13 +33,13 @@ export default {
   },
   setup() {
     const route = useRoute();
-    const site = 'https://handwrite.sixiangjia.de';
-    const defaultTitle = '手写文字生成网站 - 在线生成手写图片与 PDF';
-    const defaultDesc = '手写文字生成网站，支持多种字体和背景，在线生成高质量手写文字图片与 PDF。适合作业、论文、信件等场景，支持自定义字体、背景与参数调节。';
+    const site = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080';
+    const defaultTitle = '作业文档转手写体工作台';
+    const defaultDesc = '个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。';
 
     const title = computed(() => route.meta?.title || defaultTitle);
     const description = computed(() => route.meta?.description || defaultDesc);
-    const robots = computed(() => route.meta?.robots || 'index, follow');
+    const robots = computed(() => route.meta?.robots || 'noindex, nofollow');
     const canonical = computed(() => site + route.fullPath);
 
     useHead(() => ({
@@ -107,4 +107,3 @@ button:hover {
 }
 
 </style>
-

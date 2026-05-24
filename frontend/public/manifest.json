@@ -1,7 +1,7 @@
 {
-  "name": "手写文字生成网站",
-  "short_name": "手写生成器",
-  "description": "支持多种字体和背景，在线生成高质量手写文字图片和PDF",
+  "name": "作业文档转手写体工作台",
+  "short_name": "手写工作台",
+  "description": "个人私有的作业文档转手写体工具，支持文档抽取、公式整理和 PDF/Word 导出",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

@@ -1,180 +1,108 @@
-[English](README_en.md) | [中文](README.md)
+# 作业文档转手写体工作台
 
-# 手写文字生成网站
+这是我的个人私有工具，用来把作业、讲义、笔记、论文草稿等文档整理成可预览、可导出的手写体结果。项目已经从原来的公开手写生成站改造成偏本地/私有部署的工作台，所以这里不再保留公开演示站、宣传截图、赞助入口、社群链接和公开 SEO 文案。
 
-[![star](https://atomgit.com/liuweiqing147/handwriting-web/star/badge.svg)](https://atomgit.com/liuweiqing147/handwriting-web)
+## 当前功能
 
-欢迎来到我的手写文字生成网站！这个平台允许你使用现有的字体来创建模拟手写文字的图片。
+- 支持直接粘贴正文，或上传 PDF、Word、Markdown、TXT、RTF 作为正文来源。
+- 上传文档后会抽取内容并规范化为 Markdown，数学公式会尽量整理成可读形式。
+- PDF 抽取可接入 MinerU 服务，用于把扫描或复杂排版文档转成 Markdown。
+- 支持生成标准 Word 校对稿，便于先检查正文和公式。
+- 支持手写体预览，并导出 PDF 或 Word 文件。
+- 保留字体、背景图、边距、字号、行距、扰动、墨色、涂改等手写渲染参数。
+- 后端使用任务队列和 WebSocket/轮询进度，避免长文档生成时前端一直卡住。
 
-网址：https://handwrite.sixiangjia.de
-视频介绍： https://www.bilibili.com/video/BV1DM4y1W7fp/
-![Alt text](image-generate.png)
-电报讨论群组：https://t.me/+zFImOziSNullOTE1
+## 目录结构
 
-## 功能
-
-### 自定义字体
-
-你可以上传自己的字体来生成符合你需求的独特手写风格。
-
-### 背景图片
-
-上传你想要的背景图片，为你的手写文字添加个人风格。如果你没有背景图片，别担心！只需指定图片的宽度和高度，我的网站将自动为你生成带有横线的背景图片。
-
-### 可调参数
-
-你可以完全控制各种参数，如边距（上、下、左、右），字符间的随机扰动，笔画的旋转偏移，墨水的深度变化，涂改痕迹。这使你可以微调你的手写文字的外观。
-
-### 从各种文件类型中提取文本
-
-我的网站可以从各种文件类型中提取文本内容（如 pdf，docs），使你能够方便地上传文本。
-
-### 预览功能
-
-我在网站的右侧添加了预览功能。这使你可以在最终确定之前方便地查看你的手写文字图片的效果。
-
-### 完整图片生成
-
-一旦你对预览满意，你可以生成一整套图片。这些图片将被方便地打包成一个 zip 文件，以便于下载。
-
-### pdf 导出功能
-
-一键生成 pdf，不用再手动粘贴图片
-
-## 自己搭建的方法
-
-克隆项目，在项目目录中使用`docker-compose up -d`，默认端口为 2345
-
-若要添加字体，字体文件放在项目根目录下的 ttf_files 中
-
-### CPU 限制配置
-
-默认配置中对容器进行了 CPU 限制：
-
-- frontend 容器：使用 50%的 CPU
-- backend 容器：使用 80%的 CPU
-
-如果不想限制 CPU 使用，可以在 `docker-compose.yml` 文件中删除以下配置：
-
-```yaml
-cpu_count: 1
-cpu_quota: 50000 # 或 80000
-cpu_period: 100000
+```text
+backend/          FastAPI 后端、文档抽取、公式整理、手写渲染
+frontend/         Vue 前端工作台
+ttf_files/        本地手写字体
+mysql/            可选数据库初始化文件
+docker-compose.yml 本地私有部署配置
 ```
 
-或者可以调整 `cpu_quota` 的值来设置不同的 CPU 使用限制。
+## 本地开发
 
-## 本地运行
+Python 环境请使用 Conda 或 uv 管理，不要使用 `sudo pip`，也不要混用 Homebrew Python、系统 Python 和项目环境。
 
-### 环境要求
+```bash
+conda create -n handwriting-web python=3.11
+conda activate handwriting-web
+pip install -r backend/requirements.txt
+```
 
-- **Python 版本**: 3.8 - 3.13（推荐 3.10 或 3.11）
-- **Node.js 版本**: 14.x 或更高
+启动后端：
 
-### 方法一：使用 VS Code 一键启动（推荐）
-
-1. 克隆项目到本地
-2. 使用 VS Code 打开项目文件夹
-3. 按 `Ctrl+Shift+B` 快捷键，自动并行启动前端和后端开发服务器
-4. 打开浏览器，输入 http://localhost:8080 ，即可访问网站
-
-**其他可用任务**（通过 `Ctrl+Shift+P` → `Tasks: Run Task` 访问）：
-
-- 🔧 安装所有依赖
-- 📦 安装前端依赖
-- 🐍 安装后端依赖
-- 🏗️ 构建前端项目
-- 🐳 启动/停止 Docker Compose
-- 🧹 清理前端构建
-
-### 方法二：手动启动
-
-1. 克隆项目到本地
-2. 进入 backend 文件夹，运行后端程序
-
-```shell
+```bash
 cd backend
-pip install -r requirements.txt
 python app.py
-# 注意：服务将在 5005 端口启动
 ```
 
-3. 进入 frontend 文件夹，运行前端程序
+启动前端：
 
-```shell
+```bash
 cd frontend
 npm install
 npm run serve
 ```
 
-4. 打开浏览器，输入 http://localhost:8080 ，即可访问网站
+开发访问地址：
 
-## 后端架构
-
-### 整体流程
-
-```
-用户请求 → Nginx（前端容器） → 反向代理 → FastAPI（后端容器）
-                                          │
-                                          ▼
-                              提交任务 → 写入 SQLite → 立即返回 task_id
-                                          │
-                              后台协程排队执行 → Semaphore(2) 控制并发
-                                          │
-                              handwrite() 渲染 → 保存结果到磁盘
-                                          │
-                              用户通过轮询 或 WebSocket 获取结果
+```text
+http://localhost:8080
 ```
 
-请求提交后立即返回 `task_id`（HTTP 200），实际的手写图像渲染在后台 `BackgroundTask` 中异步执行，用户通过轮询 `/task/{task_id}` 接口或 WebSocket 连接获取实时进度。
+后端默认监听：
 
-
-
-## 结语
-
-我希望你喜欢使用我的手写文字生成网站来创建你的个性化手写文字图片！
-
-## 赞助方式
-
-如果这个项目对你有帮助，欢迎通过支付宝赞助支持我继续维护：
-
-![支付宝赞助](https://www.sixiangjia.de/assets/images/zhifubao.jpg)
-
-## 随笔
-
-2024.6.13 由于昨天需要完成政治论文的手写，于是亲自体验了我的程序，发现效果确实不错，但是几个月来一直没有解决处理大量文字的时候程序没响应的问题，经过我添加日志发现，其实后端一直在生成图片，但是由于 nginx 的超时限制导致请求失败（这个在 docker 的日志中可以看到），于是我修改了外部和镜像内部的 nginx 的超时配置，但是问题仍然存在，这时我发现前端控制台中不再是 504 错误而是 524 错误，经过查询发现这是因为 cf 的超时限制是 100 秒，超过 cf 的限制而报错，解决方法是关闭小黄云不享受 cf 的保护，还有一种解决方法就是让后端不断给前端传输数据保持连接活跃。
-
-### 随笔其二
-我感觉以后还是让ai查看问题，因为人没有考虑这么全面，之前文件虽然清理成功，但只是部分的，没有包括pdf，我忽视了，导致磁盘爆满了两次，最后把日志给ai（claude code），让它解决了
-
-### 随笔其三
-2026.4.18
-Service worker缓存处理不好就会导致用户无法更新新的页面
-
-### 随笔其四
-2026.4.18
-**上传背景图片报错 `Missing required field: background_image`**
-
-**问题根因**：FastAPI 内部使用 `starlette.datastructures.UploadFile`，但代码中 `isinstance(background_image, UploadFile)` 导入的是 `fastapi.UploadFile`。两者在运行时不是同一个类，导致类型检查失败，`background_image_bytes` 被设为 `None`。
-
-**修复方案**：用 `hasattr` 检查对象的特征属性（`read` 和 `filename` 方法），而不是依赖 `isinstance`：
-
-```python
-# ❌ 错误
-if isinstance(background_image, UploadFile):
-    background_image_bytes = await background_image.read()
-
-# ✅ 正确
-if hasattr(background_image, 'read') and hasattr(background_image, 'filename'):
-    background_image_bytes = await background_image.read()
+```text
+http://127.0.0.1:5005
 ```
-最后一定要记住一点点，不要相信VSCode或者任何值得相信的程序，它有时候会出错，导致我的fast API服务器无法输出日志，最好的方法就是重启
-### 随笔其五
-2026.4.21
-将原先首屏的大图片替换成小的webp，大大优化FCP
-![lighthouse](lighthouse.png)
-## 待做(已完成)
 
-使用 websocket 保持连接，避免 cf 超时，并通知客户端目前生成进度
-socketio.emit('image_generated', {'image_index': i, 'image_path': image_path})
-使用队列，通知客户端目前有多少人等待，暂存请求（目前好像是直接抛弃）
+## PDF 抽取配置
+
+如果要使用 MinerU 抽取 PDF，需要在后端运行环境中配置：
+
+```bash
+export MINERU_BASE_URL="https://你的-mineru-服务地址"
+export MINERU_API_TOKEN="你的-token"
+export MINERU_PUBLIC_BASE_URL="http://你的后端可公网访问地址"
+```
+
+本地只处理 Markdown、TXT、Word 时可以不配置 MinerU；上传 PDF 时如果缺少配置，后端会返回明确错误。
+
+## 私有部署
+
+Docker Compose 以本地构建为主：
+
+```bash
+docker compose up --build -d
+```
+
+默认端口：
+
+- 前端：`2345`
+- 后端：`127.0.0.1:5005`
+
+字体放在 `ttf_files/`，Compose 会挂载到后端容器。
+
+## 验证命令
+
+后端重点测试：
+
+```bash
+python -m unittest backend.tests.test_unified_handwriting_pipeline
+```
+
+前端构建：
+
+```bash
+cd frontend
+npm run build
+```
+
+## 维护备注
+
+- 这个仓库按个人私有项目维护，不再面向公开站点运营。
+- 不提交运行日志、缓存、临时文件、构建产物和本地代理配置。
+- 提交前检查 `git status`，确认只包含本次需要的代码和文档改动。

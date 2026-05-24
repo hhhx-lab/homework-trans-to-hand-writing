@@ -51,6 +51,8 @@ class GenerateHandwritingParams(BaseModel):
     font_option: Union[str, None] = None
     pdf_save: str = "false"
     full_preview: str = "true"
+    content_format: str = "plain"
+    output_format: str = "zip"
 
     # 文件字段（非 Pydantic 验证，走 FastAPI File 绑定）
     # 注意：FastAPI 端点中仍需单独声明 File 参数，

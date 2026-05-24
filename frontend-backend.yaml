@@ -20,9 +20,9 @@ spec:
     spec:
       containers:
       - name: backend
-        image: 14790897/backend-handwriting:latest
+        image: homework-handwriting-backend:local
         ports:
-        - containerPort: 5000
+        - containerPort: 5005
         volumeMounts:
           - name: ttf-files
             mountPath: /app/font_assets
@@ -38,7 +38,7 @@ spec:
             cpu: "0.1"
         readinessProbe:
            tcpSocket:
-             port: 5000
+             port: 5005
            initialDelaySeconds: 5
            periodSeconds: 10
       volumes:
@@ -63,7 +63,7 @@ spec:
   ports:
     - protocol: TCP
       port: 5000
-      targetPort: 5000
+      targetPort: 5005
   type: ClusterIP
 
 ---
@@ -86,7 +86,7 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: 14790897/frontend-handwriting:latest
+        image: homework-handwriting-frontend:local
         ports:
         - containerPort: 80
         resources:

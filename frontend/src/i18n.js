@@ -61,9 +61,9 @@ const messages = {
       email: "Email",
       feedback: "Feedback",
       introduce: "Introduce",
-      freeprompt: "This website is free. If you are charged, please refund.",
+      freeprompt: "Private local tool.",
       suggest:
-        "It is recommended to ask questions in GitHub issue and give error logs.",
+        "Record the problem locally with error logs.",
     },
   },
   cn: {
@@ -122,8 +122,8 @@ const messages = {
       email: "邮箱",
       feedback: "反馈",
       introduce: "介绍",
-      freeprompt: "本网站是免费网站，如果你是付费访问的请退款",
-      suggest: "推荐在GitHub issue中进行提问，并给出错误日志",
+      freeprompt: "个人私有本地工具",
+      suggest: "建议把问题和错误日志记录在本地反馈中",
     },
   },
 };

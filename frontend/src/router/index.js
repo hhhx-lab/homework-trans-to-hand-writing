@@ -11,10 +11,10 @@ const routes = [
     name: "Home",
     component: Home,
     meta: {
-      title: "手写文字生成网站 - 在线生成手写图片与 PDF",
+      title: "作业文档转手写体工作台",
       description:
-        "手写文字生成网站，支持多种字体和背景，在线生成高质量手写文字图片与 PDF。适合作业、论文、信件等场景，支持自定义字体、背景与参数调节。",
-      robots: "index, follow",
+        "个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。",
+      robots: "noindex, nofollow",
     },
   },
   {
@@ -22,9 +22,9 @@ const routes = [
     name: "About",
     component: () => import("../views/AboutView.vue"),
     meta: {
-      title: "关于 - 手写文字生成网站",
-      description: "关于本网站与功能介绍、使用方法及隐私说明。",
-      robots: "index, follow",
+      title: "关于 - 作业文档转手写体工作台",
+      description: "关于个人私有工作台的功能与使用说明。",
+      robots: "noindex, nofollow",
     },
   },
   {
@@ -32,7 +32,7 @@ const routes = [
     name: "Login",
     component: Login,
     meta: {
-      title: "登录 - 手写文字生成网站",
+      title: "登录 - 作业文档转手写体工作台",
       description: "登录您的账户以使用更多功能。",
       robots: "noindex, nofollow",
     },
@@ -42,8 +42,8 @@ const routes = [
     name: "Register",
     component: Register,
     meta: {
-      title: "注册 - 手写文字生成网站",
-      description: "注册账户，开始生成个性化手写图片与 PDF。",
+      title: "注册 - 作业文档转手写体工作台",
+      description: "注册账户，开始使用个人手写体转换工具。",
       robots: "noindex, nofollow",
     },
   },
@@ -52,9 +52,9 @@ const routes = [
     name: "Feedback",
     component: UserFeedback,
     meta: {
-      title: "用户反馈 - 手写文字生成网站",
-      description: "提交您的意见与建议，帮助我们改进产品。",
-      robots: "index, follow",
+      title: "反馈 - 作业文档转手写体工作台",
+      description: "记录个人使用中的问题与改进项。",
+      robots: "noindex, nofollow",
     },
   },
   {
@@ -62,9 +62,9 @@ const routes = [
     name: "Introduce",
     component: IntroduceComponent,
     meta: {
-      title: "功能介绍 - 手写文字生成网站",
-      description: "了解网站核心功能、参数配置与使用技巧。",
-      robots: "index, follow",
+      title: "功能介绍 - 作业文档转手写体工作台",
+      description: "了解个人工作台的文档抽取、公式整理和手写导出流程。",
+      robots: "noindex, nofollow",
     },
   },
 ];
@@ -82,4 +82,3 @@ router.afterEach(() => {
 });
 
 export default router;
-
