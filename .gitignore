@@ -39,3 +39,4 @@ backend/pandoc-*-macOS.pkg
 *.pkg
 *.db
 *.bin
+output/
