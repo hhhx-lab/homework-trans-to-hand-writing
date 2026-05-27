@@ -18,12 +18,19 @@ import mineru_adapter
 from handwriting_markdown_renderer import (
     HandwritingRenderConfig,
     latex_to_debug_text,
+    markdown_render_debug_text,
     render_markdown_handwriting,
     write_images_to_docx_bytes,
 )
 from markdown_math import editable_docx_bytes, inspect_docx_math, normalize_math_markdown
-from mineru_adapter import MinerUConfigError, extract_pdf_to_markdown
-from source_extract import extract_source_to_markdown
+from mineru_adapter import (
+    MinerUConfigError,
+    MinerUExtractionError,
+    extract_pdf_to_markdown,
+    sanitize_mineru_markdown,
+    user_facing_mineru_error,
+)
+from source_extract import extract_source_to_markdown, safe_source_filename
 
 
 FONT_PATH = Path(__file__).resolve().parents[1] / "font_assets" / "神韵英子楷书.ttf"
@@ -56,6 +63,34 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         docx_info = inspect_docx_math(editable_docx_bytes(normalized))
         self.assertGreater(docx_info["office_math_objects"], 0)
         self.assertFalse(docx_info["has_latex_residuals"])
+
+    def test_markdown_normalizer_preserves_inline_display_math_and_image_markers(self):
+        markdown = "前文 ![图1](assets/a.png) 中间 $$x^2+1$$ 后文 <img src=\"b.png\" alt=\"图2\">"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn("![图1](assets/a.png)", normalized)
+        self.assertIn("<img src=\"b.png\" alt=\"图2\">", normalized)
+        self.assertIn("$$\nx^2+1\n$$", normalized)
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        self.assertIn("[图片:![图1](assets/a.png)]", debug_text)
+        self.assertIn("[图片:<img src=\"b.png\" alt=\"图2\">]", debug_text)
+        self.assertIn("x^2+1", debug_text)
+
+    def test_unknown_latex_commands_remain_visible_in_debug_text(self):
+        debug_text = latex_to_debug_text(r"\unknowncmd{x}+\overset{a}{b}", FONT_PATH)
+        self.assertIn(r"\unknowncmd{x}", debug_text)
+        self.assertIn(r"\overset{a}{b}", debug_text)
+
+    def test_common_math_decorations_have_visible_marks(self):
+        debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
+        self.assertIn("¯x", debug_text)
+        self.assertIn("^y", debug_text)
+        self.assertIn("→z", debug_text)
+
+    def test_mineru_sanitize_preserves_image_placeholders(self):
+        sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")
+        self.assertIn("题面", sanitized)
+        self.assertIn("[图片:![scan](images/p1.png)]", sanitized)
+        self.assertIn("答案", sanitized)
 
     def test_markdown_renderer_outputs_nonblank_image_and_docx(self):
         background = Image.new("RGB", (900, 1100), "white")
@@ -104,6 +139,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             document.save(docx)
             extracted = extract_source_to_markdown(docx)["markdown"]
             self.assertIn("Word 文本", extracted)
+
+    def test_safe_source_filename_keeps_suffix_for_chinese_names(self):
+        self.assertEqual(safe_source_filename("随机过程三次作业答案.pdf", ".pdf"), "source.pdf")
+        self.assertEqual(safe_source_filename("作业答案.docx", ".docx", "draft"), "draft.docx")
+        self.assertEqual(safe_source_filename("homework.pdf", ".pdf"), "homework.pdf")
+
+    def test_mineru_timeout_error_is_user_facing(self):
+        message = user_facing_mineru_error(MinerUExtractionError("MinerU request failed: <urlopen error timed out>"))
+        self.assertIn("PDF 识别服务 MinerU 连接超时", message)
+        self.assertIn("MINERU_BASE_URL", message)
 
     def test_pdf_without_mineru_config_has_readable_error(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,6 +1,4 @@
 import "bootstrap/dist/css/bootstrap.css";
-import "bootstrap/dist/js/bootstrap.js";
-import "bootstrap";
 import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
@@ -8,8 +6,6 @@ import store from "./store";
 import i18n from "./i18n";
 import axios from "axios";
 import axiosRetry from "axios-retry";
-// eslint-disable-next-line no-unused-vars
-import Swal from "sweetalert2";
 import { createHead } from "@vueuse/head";
 
 // import Viewer from "v-viewer";H
@@ -36,6 +32,9 @@ axiosRetry(axios, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay, // 1s → 2s → 4s
   retryCondition: (error) => {
+    if (error.config?.url?.includes('/api/handwriting/extract_source')) {
+      return false;
+    }
     // 503 queue_full 是业务状态，不需要重试
     if (
       error.response?.status === 503 &&
@@ -49,13 +48,9 @@ axiosRetry(axios, {
       axiosRetry.isRetryableError(error)
     );
   },
-  onRetry: (retryCount, error) => {
-    console.warn(`请求重试第 ${retryCount} 次，原因：${error.message}`);
-  },
 });
 
 app.config.globalProperties.$http = axios;
-app.config.globalProperties.$swal = Swal;
 // app.use(Viewer);
 
 app.mount("#app");

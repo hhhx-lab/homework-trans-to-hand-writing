@@ -30,7 +30,6 @@ export default {
 
     // 监听 beforeinstallprompt 事件
     window.addEventListener('beforeinstallprompt', (e) => {
-      console.log('PWA: beforeinstallprompt event fired');
       // 阻止默认的安装提示
       e.preventDefault();
 
@@ -47,15 +46,9 @@ export default {
 
     // 监听应用安装事件
     window.addEventListener('appinstalled', () => {
-      console.log('PWA: App was installed');
       this.showInstallPrompt = false;
       this.deferredPrompt = null;
     });
-
-    // 检查是否已经安装
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      console.log('PWA: App is running in standalone mode');
-    }
   },
   methods: {
     async installApp() {
@@ -68,7 +61,6 @@ export default {
       
       // 等待用户响应 deferredPrompt是之前保存的浏览器事件 测试 测试
       const { outcome } = await this.deferredPrompt.userChoice;
-      console.log(`PWA: User response to the install prompt: ${outcome}`);
 
       // 用户在原生提示中拒绝后，记忆选择并不再弹出
       if (outcome === 'dismissed') {

@@ -55,9 +55,14 @@ from handwriting_markdown_renderer import (
     write_images_to_docx_bytes,
 )
 from markdown_math import editable_docx_bytes, normalize_math_markdown
-from mineru_adapter import STAGING_DIR as MINERU_STAGING_DIR
+from mineru_adapter import (
+    MinerUConfigError,
+    MinerUExtractionError,
+    STAGING_DIR as MINERU_STAGING_DIR,
+    user_facing_mineru_error,
+)
 from pdf import generate_pdf
-from source_extract import SUPPORTED_SOURCE_SUFFIXES, extract_source_to_markdown
+from source_extract import SUPPORTED_SOURCE_SUFFIXES, extract_source_to_markdown, safe_source_filename
 from werkzeug.utils import secure_filename
 
 
@@ -1436,7 +1441,7 @@ async def extract_handwriting_source(request: Request, file: UploadFile = File(.
     os.makedirs(project_temp_base, exist_ok=True)
     temp_dir = tempfile.mkdtemp(dir=project_temp_base)
     try:
-        safe_name = secure_filename(file.filename) or f"source{suffix}"
+        safe_name = safe_source_filename(file.filename, suffix, "source")
         source_path = Path(temp_dir) / safe_name
         source_path.write_bytes(await file.read())
         result = await asyncio.to_thread(extract_source_to_markdown, source_path)
@@ -1449,6 +1454,9 @@ async def extract_handwriting_source(request: Request, file: UploadFile = File(.
                 "metadata": result.get("metadata", {}),
             }
         )
+    except (MinerUConfigError, MinerUExtractionError) as e:
+        logger.exception("Source extraction failed")
+        return JSONResponse({"status": "error", "message": user_facing_mineru_error(e)}, status_code=503)
     except Exception as e:
         logger.exception("Source extraction failed")
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
@@ -1467,9 +1475,7 @@ async def handwriting_markdown_docx(
         return JSONResponse({"status": "error", "message": "Markdown 内容不能为空"}, status_code=400)
     try:
         docx_data = await asyncio.to_thread(editable_docx_bytes, markdown)
-        safe_name = secure_filename(filename) or "standard_formula_draft.docx"
-        if not safe_name.lower().endswith(".docx"):
-            safe_name += ".docx"
+        safe_name = safe_source_filename(filename, ".docx", "standard_formula_draft")
         return Response(
             content=docx_data,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1511,7 +1517,7 @@ async def generate_handwritten_document(
     os.makedirs(project_temp_base, exist_ok=True)
     temp_dir = tempfile.mkdtemp(dir=project_temp_base)
     try:
-        safe_name = secure_filename(file.filename) or f"input{suffix}"
+        safe_name = safe_source_filename(file.filename, suffix, "input")
         source_path = Path(temp_dir) / safe_name
         source_path.write_bytes(await file.read())
         out_dir = Path(temp_dir) / "out"

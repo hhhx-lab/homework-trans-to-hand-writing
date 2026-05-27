@@ -4,6 +4,7 @@ import math
 import random
 import re
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -114,6 +115,18 @@ SIZE_DELIMITERS = {"big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr",
 LATEX_RESIDUAL_RE = re.compile(
     r"\\(?:frac|sqrt|sum|int|begin|end|left|right|mathbf|mathrm|mathbb|operatorname|textstyle|displaystyle|ldots|cdots|dots)"
 )
+IMAGE_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.I)
+COMMAND_FALLBACKS = {
+    "overline": "¯",
+    "underline": "_",
+    "hat": "^",
+    "bar": "¯",
+    "tilde": "~",
+    "vec": "→",
+    "dot": "·",
+    "ddot": "··",
+}
 
 
 @dataclass
@@ -149,11 +162,20 @@ class FontCache:
 
 
 class DrawContext:
-    def __init__(self, draw: ImageDraw.ImageDraw, fonts: FontCache, config: HandwritingRenderConfig, rand: random.Random):
+    def __init__(
+        self,
+        image: Image.Image,
+        draw: ImageDraw.ImageDraw,
+        fonts: FontCache,
+        config: HandwritingRenderConfig,
+        rand: random.Random,
+    ):
+        self.image = image
         self.draw = draw
         self.fonts = fonts
         self.config = config
         self.rand = rand
+        self.depth = 0
 
     def color(self) -> tuple[int, int, int]:
         delta = self.rand.gauss(0, self.config.ink_depth_sigma) if self.config.ink_depth_sigma else 0
@@ -164,6 +186,41 @@ class DrawContext:
             round(self.rand.gauss(0, self.config.perturb_x_sigma)) if self.config.perturb_x_sigma else 0,
             round(self.rand.gauss(0, self.config.perturb_y_sigma)) if self.config.perturb_y_sigma else 0,
         )
+
+    @contextmanager
+    def nested(self):
+        self.depth += 1
+        try:
+            yield
+        finally:
+            self.depth -= 1
+
+    def hand_line(self, x1: int, y1: int, x2: int, y2: int, *, width: int = 1, wobble: float | None = None) -> None:
+        wobble = wobble if wobble is not None else max(1.0, self.config.perturb_y_sigma or 1)
+        distance = math.hypot(x2 - x1, y2 - y1)
+        steps = max(3, min(18, int(distance / 28)))
+        points = []
+        for i in range(steps + 1):
+            t = i / steps
+            px = x1 + (x2 - x1) * t
+            py = y1 + (y2 - y1) * t
+            if i not in {0, steps}:
+                px += self.rand.gauss(0, wobble * 0.6)
+                py += self.rand.gauss(0, wobble)
+            points.append((round(px), round(py)))
+        for _ in range(2):
+            shifted = [
+                (
+                    x + round(self.rand.gauss(0, max(0.4, wobble * 0.25))),
+                    y + round(self.rand.gauss(0, max(0.4, wobble * 0.25))),
+                )
+                for x, y in points
+            ]
+            self.draw.line(shifted, fill=self.color(), width=max(1, width), joint="curve")
+
+    def hand_polyline(self, points: list[tuple[int, int]], *, width: int = 1, wobble: float | None = None) -> None:
+        for start, end in zip(points, points[1:]):
+            self.hand_line(start[0], start[1], end[0], end[1], width=width, wobble=wobble)
 
 
 class Box:
@@ -195,7 +252,20 @@ class TextBox(Box):
         if ctx.config.font_size_sigma:
             actual_size = max(8, round(ctx.rand.gauss(self.size, ctx.config.font_size_sigma)))
         font = ctx.fonts.get(actual_size)
-        ctx.draw.text((x + dx, y + dy), self.text, fill=ctx.color(), font=font)
+        angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
+        if self.text.strip() and angle_sigma and ctx.depth > 0:
+            bbox = font.getbbox(self.text)
+            width = max(1, bbox[2] - bbox[0] + 8)
+            height = max(1, bbox[3] - bbox[1] + 8)
+            layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+            layer_draw = ImageDraw.Draw(layer)
+            layer_draw.text((4 - bbox[0], 4 - bbox[1]), self.text, fill=ctx.color() + (255,), font=font)
+            angle = math.degrees(ctx.rand.gauss(0, angle_sigma * 0.45))
+            rotated = layer.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+            target = (x + dx - (rotated.width - width) // 2, y + dy - (rotated.height - height) // 2)
+            ctx.image.paste(rotated.convert(ctx.image.mode), target, rotated)
+        else:
+            ctx.draw.text((x + dx, y + dy), self.text, fill=ctx.color(), font=font)
 
     def debug_text(self) -> str:
         return self.text
@@ -230,12 +300,21 @@ class FractionBox(Box):
         self.height = numerator.height + denominator.height + pad * 3 + 2
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
-        nx = x + (self.width - self.numerator.width) // 2
-        dx = x + (self.width - self.denominator.width) // 2
-        self.numerator.draw(ctx, nx, y)
+        nx = x + (self.width - self.numerator.width) // 2 + ctx.rand.choice([-1, 0, 0, 1])
+        dx = x + (self.width - self.denominator.width) // 2 + ctx.rand.choice([-1, 0, 0, 1])
+        with ctx.nested():
+            self.numerator.draw(ctx, nx, y)
         line_y = y + self.numerator.height + self.pad
-        ctx.draw.line((x + self.pad // 2, line_y, x + self.width - self.pad // 2, line_y), fill=ctx.color(), width=max(2, self.pad // 3))
-        self.denominator.draw(ctx, dx, line_y + self.pad)
+        ctx.hand_line(
+            x + self.pad // 2,
+            line_y + ctx.rand.choice([-1, 0, 0, 1]),
+            x + self.width - self.pad // 2,
+            line_y + ctx.rand.choice([-1, 0, 0, 1]),
+            width=max(2, self.pad // 3),
+            wobble=max(1.2, self.pad / 5),
+        )
+        with ctx.nested():
+            self.denominator.draw(ctx, dx, line_y + self.pad)
 
     def debug_text(self) -> str:
         return f"({self.numerator.debug_text()})/({self.denominator.debug_text()})"
@@ -251,12 +330,19 @@ class SqrtBox(Box):
         self.height = max(self.root.height, child.height + self.pad * 2)
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
-        self.root.draw(ctx, x, y + self.baseline - self.root.baseline)
         child_x = x + self.root.width + self.pad
         child_y = y + self.baseline - self.child.baseline + self.pad // 2
-        self.child.draw(ctx, child_x, child_y)
-        over_y = child_y + max(2, self.pad // 2)
-        ctx.draw.line((child_x, over_y, child_x + self.child.width, over_y), fill=ctx.color(), width=max(1, self.pad // 3))
+        base_y = child_y + self.child.baseline
+        tick_y = base_y - max(2, self.pad)
+        root_points = [
+            (x + max(1, self.pad // 2), tick_y),
+            (x + self.root.width // 3, base_y + max(2, self.pad // 2)),
+            (x + self.root.width - max(2, self.pad // 2), child_y + max(1, self.pad // 3)),
+            (child_x + self.child.width, child_y + max(1, self.pad // 3) + ctx.rand.choice([-1, 0, 1])),
+        ]
+        ctx.hand_polyline(root_points, width=max(1, self.pad // 3), wobble=max(1.0, self.pad / 4))
+        with ctx.nested():
+            self.child.draw(ctx, child_x, child_y)
 
     def debug_text(self) -> str:
         return f"√({self.child.debug_text()})"
@@ -286,17 +372,23 @@ class ScriptBox(Box):
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
         if self.limits:
             if self.sup:
-                self.sup.draw(ctx, x + (self.width - self.sup.width) // 2, y)
+                with ctx.nested():
+                    self.sup.draw(ctx, x + (self.width - self.sup.width) // 2 + ctx.rand.choice([-2, -1, 0, 1]), y)
             base_y = y + (self.sup.height + 2 if self.sup else 0)
-            self.base.draw(ctx, x + (self.width - self.base.width) // 2, base_y)
+            with ctx.nested():
+                self.base.draw(ctx, x + (self.width - self.base.width) // 2, base_y)
             if self.sub:
-                self.sub.draw(ctx, x + (self.width - self.sub.width) // 2, base_y + self.base.height + 2)
+                with ctx.nested():
+                    self.sub.draw(ctx, x + (self.width - self.sub.width) // 2 + ctx.rand.choice([-2, -1, 0, 1]), base_y + self.base.height + 2)
             return
-        self.base.draw(ctx, x, y + self.baseline - self.base.baseline)
+        with ctx.nested():
+            self.base.draw(ctx, x, y + self.baseline - self.base.baseline)
         if self.sup:
-            self.sup.draw(ctx, x + self.base.width, y)
+            with ctx.nested():
+                self.sup.draw(ctx, x + self.base.width + ctx.rand.choice([-1, 0, 1]), y + ctx.rand.choice([-1, 0, 1]))
         if self.sub:
-            self.sub.draw(ctx, x + self.base.width, y + self.baseline + 2)
+            with ctx.nested():
+                self.sub.draw(ctx, x + self.base.width + ctx.rand.choice([-1, 0, 1]), y + self.baseline + 2 + ctx.rand.choice([-1, 0, 1]))
 
     def debug_text(self) -> str:
         text = self.base.debug_text()
@@ -332,25 +424,131 @@ class MatrixBox(Box):
     def _right_delim(self) -> str:
         return {"pmatrix": ")", "bmatrix": "]", "vmatrix": "|"}.get(self.env, "")
 
+    def _draw_delim(self, ctx: DrawContext, delim: str, x: int, y: int, height: int, width: int, *, left: bool) -> None:
+        stroke = max(1, self.pad // 4)
+        if delim in {"(", ")"}:
+            inset = max(2, width // 3)
+            outer_x = x + (width - inset if left else inset)
+            inner_x = x + (inset if left else width - inset)
+            mid_y = y + height // 2
+            ctx.hand_polyline(
+                [
+                    (outer_x, y + stroke),
+                    (inner_x, y + height // 4),
+                    (inner_x, mid_y),
+                    (inner_x, y + height * 3 // 4),
+                    (outer_x, y + height - stroke),
+                ],
+                width=stroke,
+                wobble=max(1.0, self.pad / 3),
+            )
+            return
+        if delim in {"[", "]"}:
+            edge_x = x + (width - stroke if left else stroke)
+            inner_x = x + (stroke if left else width - stroke)
+            ctx.hand_line(inner_x, y + stroke, edge_x, y + stroke, width=stroke, wobble=max(1.0, self.pad / 4))
+            ctx.hand_line(edge_x, y + stroke, edge_x, y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
+            ctx.hand_line(edge_x, y + height - stroke, inner_x, y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
+            return
+        if delim == "|":
+            edge_x = x + width // 2
+            ctx.hand_line(edge_x, y + stroke, edge_x + ctx.rand.choice([-1, 0, 1]), y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
+            return
+        if delim == "{":
+            mid_y = y + height // 2
+            ctx.hand_polyline(
+                [
+                    (x + width - stroke, y + stroke),
+                    (x + width // 3, y + height // 4),
+                    (x + width // 2, mid_y),
+                    (x + width // 3, y + height * 3 // 4),
+                    (x + width - stroke, y + height - stroke),
+                ],
+                width=stroke,
+                wobble=max(1.0, self.pad / 3),
+            )
+            return
+        TextBox(delim, ctx.fonts, height).draw(ctx, x, y)
+
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
         cursor_x = x
         if self.left_delim:
-            self.left_delim.draw(ctx, cursor_x, y + (self.height - self.left_delim.height) // 2)
+            self._draw_delim(ctx, self._left_delim(), cursor_x, y, self.height, self.left_delim.width, left=True)
             cursor_x += self.left_delim.width + self.pad // 2
         body_y = y + (self.height - (sum(self.row_heights) + self.pad * max(0, len(self.rows) - 1))) // 2
         row_y = body_y
         for row_index, row in enumerate(self.rows):
             cell_x = cursor_x
             for col_index, cell in enumerate(row):
-                cell.draw(ctx, cell_x + (self.col_widths[col_index] - cell.width) // 2, row_y + (self.row_heights[row_index] - cell.height) // 2)
+                with ctx.nested():
+                    cell.draw(
+                        ctx,
+                        cell_x + (self.col_widths[col_index] - cell.width) // 2 + ctx.rand.choice([-1, 0, 0, 1]),
+                        row_y + (self.row_heights[row_index] - cell.height) // 2 + ctx.rand.choice([-1, 0, 0, 1]),
+                    )
                 cell_x += self.col_widths[col_index] + self.pad
             row_y += self.row_heights[row_index] + self.pad
         if self.right_delim:
-            self.right_delim.draw(ctx, x + self.width - self.right_delim.width, y + (self.height - self.right_delim.height) // 2)
+            self._draw_delim(ctx, self._right_delim(), x + self.width - self.right_delim.width, y, self.height, self.right_delim.width, left=False)
 
     def debug_text(self) -> str:
         rows = ["[" + ",".join(cell.debug_text() for cell in row) + "]" for row in self.rows]
         return "[" + ";".join(rows) + "]"
+
+
+class DecoratedBox(Box):
+    def __init__(self, child: Box, mark: str, size: int):
+        self.child = child
+        self.mark = mark
+        self.size = size
+        self.pad = max(3, size // 12)
+        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "·", "··"} else 0
+        extra_bottom = max(4, size // 8) if mark == "_" else 0
+        self.width = child.width + self.pad * 2
+        self.height = child.height + extra_top + extra_bottom
+        self.baseline = child.baseline + extra_top
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        child_x = x + self.pad
+        child_y = y + (self.baseline - self.child.baseline)
+        with ctx.nested():
+            self.child.draw(ctx, child_x, child_y)
+        stroke = max(1, self.size // 28)
+        if self.mark == "¯":
+            yy = child_y + max(1, self.pad // 2)
+            ctx.hand_line(child_x, yy, child_x + self.child.width, yy + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "_":
+            yy = child_y + self.child.height - max(1, self.pad // 2)
+            ctx.hand_line(child_x, yy, child_x + self.child.width, yy + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "^":
+            yy = y + max(1, self.pad // 2)
+            mid = child_x + self.child.width // 2
+            ctx.hand_polyline([(mid - self.pad, yy + self.pad), (mid, yy), (mid + self.pad, yy + self.pad)], width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "~":
+            yy = y + max(1, self.pad)
+            points = [
+                (child_x, yy),
+                (child_x + self.child.width // 3, yy - self.pad // 2),
+                (child_x + self.child.width * 2 // 3, yy + self.pad // 2),
+                (child_x + self.child.width, yy),
+            ]
+            ctx.hand_polyline(points, width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "→":
+            yy = y + max(1, self.pad)
+            end_x = child_x + self.child.width
+            ctx.hand_line(child_x, yy, end_x, yy + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+            ctx.hand_polyline([(end_x - self.pad, yy - self.pad // 2), (end_x, yy), (end_x - self.pad, yy + self.pad // 2)], width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark in {"·", "··"}:
+            yy = y + max(1, self.pad // 2)
+            cx = child_x + self.child.width // 2
+            ctx.draw.ellipse((cx - stroke, yy - stroke, cx + stroke, yy + stroke), fill=ctx.color())
+            if self.mark == "··":
+                ctx.draw.ellipse((cx + self.pad - stroke, yy - stroke, cx + self.pad + stroke, yy + stroke), fill=ctx.color())
+
+    def debug_text(self) -> str:
+        if self.mark == "_":
+            return self.child.debug_text() + "_"
+        return self.mark + self.child.debug_text()
 
 
 class LatexParser:
@@ -425,6 +623,37 @@ class LatexParser:
             self.pos += 1
         return self.text[start:]
 
+    def _read_raw_group(self) -> str:
+        self._skip_space()
+        if self.pos >= len(self.text) or self.text[self.pos] != "{":
+            return ""
+        depth = 0
+        start = self.pos
+        self.pos += 1
+        while self.pos < len(self.text):
+            ch = self.text[self.pos]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                if depth == 0:
+                    self.pos += 1
+                    return self.text[start:self.pos]
+                depth -= 1
+            self.pos += 1
+        return self.text[start:]
+
+    def _read_raw_command_arguments(self, limit: int = 2) -> str:
+        saved = self.pos
+        parts: list[str] = []
+        for _ in range(limit):
+            raw = self._read_raw_group()
+            if not raw:
+                break
+            parts.append(raw)
+        if not parts:
+            self.pos = saved
+        return "".join(parts)
+
     def _parse_group(self, scale: float = 1.0) -> Box:
         content = self._read_group_text()
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
@@ -444,6 +673,8 @@ class LatexParser:
             return TextBox("", self.fonts, self.size)
         if name in SIZE_DELIMITERS:
             return TextBox("", self.fonts, self.size)
+        if name in COMMAND_FALLBACKS:
+            return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in GROUP_WRAPPERS:
             return self._parse_group()
         if name == "frac":
@@ -466,7 +697,7 @@ class LatexParser:
             return TextBox(" ", self.fonts, self.size // 2)
         if name in {"{", "}", "_", "%", "#", "&"}:
             return TextBox(name, self.fonts, self.size)
-        return TextBox(name, self.fonts, self.size)
+        return TextBox("\\" + name + self._read_raw_command_arguments(), self.fonts, self.size)
 
     def _parse_environment(self, env: str) -> Box:
         end_marker = f"\\end{{{env}}}"
@@ -540,6 +771,14 @@ def _strip_markdown_markup(line: str) -> str:
     return line
 
 
+def _visible_image_marker(match: re.Match[str]) -> str:
+    return f"[图片:{match.group(0)}]"
+
+
+def _visible_html_image_marker(match: re.Match[str]) -> str:
+    return f"[图片:{match.group(0)}]"
+
+
 def _blocks(markdown: str) -> list[tuple[str, str]]:
     lines = normalize_math_markdown(markdown).splitlines()
     blocks: list[tuple[str, str]] = []
@@ -567,7 +806,9 @@ def _blocks(markdown: str) -> list[tuple[str, str]]:
                 blocks.append(("text", " ".join(paragraph)))
                 paragraph = []
             continue
-        paragraph.append(_strip_markdown_markup(line))
+        visible_line = IMAGE_MD_RE.sub(_visible_image_marker, line)
+        visible_line = HTML_IMAGE_RE.sub(_visible_html_image_marker, visible_line)
+        paragraph.append(_strip_markdown_markup(visible_line))
     if math_lines:
         blocks.append(("math", "\n".join(math_lines)))
     if paragraph:
@@ -654,6 +895,19 @@ def _text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
     return boxes
 
 
+def markdown_render_debug_text(markdown: str, font_path: Path | None = None, size: int = 48) -> str:
+    font_path = font_path or Path(__file__).resolve().parent / "font_assets" / "神韵英子楷书.ttf"
+    font = ImageFont.truetype(str(font_path), size=size)
+    fonts = FontCache(font)
+    parts: list[str] = []
+    for kind, content in _blocks(markdown):
+        if kind == "math":
+            parts.append(latex_to_box(content, fonts, size).debug_text())
+        else:
+            parts.append("".join(box.debug_text() for box in _text_to_boxes(content, fonts, size)))
+    return "\n".join(parts)
+
+
 def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int) -> list[HBox]:
     lines: list[list[Box]] = []
     current: list[Box] = []
@@ -687,7 +941,7 @@ def render_markdown_handwriting(
     pages: list[Image.Image] = []
     page = background.copy()
     draw = ImageDraw.Draw(page)
-    ctx = DrawContext(draw, fonts, config, rand)
+    ctx = DrawContext(page, draw, fonts, config, rand)
     y = config.top_margin
 
     def new_page() -> None:
@@ -695,7 +949,7 @@ def render_markdown_handwriting(
         pages.append(page)
         page = background.copy()
         draw = ImageDraw.Draw(page)
-        ctx = DrawContext(draw, fonts, config, rand)
+        ctx = DrawContext(page, draw, fonts, config, rand)
         y = config.top_margin
 
     def draw_line(line: Box, extra_gap: int = 0, center: bool = False) -> None:

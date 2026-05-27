@@ -202,8 +202,6 @@
 </template>
 
 <script>
-import Swal from 'sweetalert2';
-
 const SETTINGS_KEYS = [
   'text',
   'fontSize',
@@ -327,28 +325,12 @@ export default {
     },
     errorMessage(value) {
       if (value) {
-        this.$swal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'error',
-          title: value,
-          showConfirmButton: false,
-          timer: 5000,
-          timerProgressBar: true,
-        });
+        this.showToast('error', value, 5000);
       }
     },
     message(value) {
       if (value) {
-        this.$swal.fire({
-          toast: true,
-          position: 'top-end',
-          icon: 'success',
-          title: value,
-          showConfirmButton: false,
-          timer: 3000,
-          timerProgressBar: true,
-        });
+        this.showToast('success', value, 3000);
       }
     },
   },
@@ -374,6 +356,22 @@ export default {
     }
   },
   methods: {
+    async showToast(icon, title, timer) {
+      try {
+        const { default: Swal } = await import('sweetalert2');
+        Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon,
+          title,
+          showConfirmButton: false,
+          timer,
+          timerProgressBar: true,
+        });
+      } catch (error) {
+        // Toasts are non-critical; keep generation flow intact if the chunk fails.
+      }
+    },
     async loadFonts() {
       try {
         const response = await this.$http.get('/api/fonts_info');
@@ -461,12 +459,13 @@ export default {
         this.$refs.imageFileInput.click();
       }
     },
-    onBackgroundImageChange(event) {
+    async onBackgroundImageChange(event) {
       const file = event.target.files[0];
       if (!file) return;
       this.backgroundImage = file;
       this.selectedImageFileName = file.name;
       this.previewImage = URL.createObjectURL(file);
+      const { default: Swal } = await import('sweetalert2');
       Swal.fire({
         title: '是否自动识别页面边距？',
         icon: 'question',

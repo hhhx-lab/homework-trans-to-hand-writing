@@ -1,9 +1,11 @@
 import { createRouter, createWebHistory } from "vue-router";
-import Home from "../views/HomeView.vue";
-import Login from "../views/UserLogin.vue";
-import Register from "../views/UserRegister.vue";
-import UserFeedback from "@/components/UserFeedback";
-import IntroduceComponent from "@/components/Introduce";
+
+const Home = () => import(/* webpackChunkName: "page-home" */ "../views/HomeView.vue");
+const About = () => import(/* webpackChunkName: "page-about" */ "../views/AboutView.vue");
+const Login = () => import(/* webpackChunkName: "page-login" */ "../views/UserLogin.vue");
+const Register = () => import(/* webpackChunkName: "page-register" */ "../views/UserRegister.vue");
+const UserFeedback = () => import(/* webpackChunkName: "page-feedback" */ "@/components/UserFeedback.vue");
+const IntroduceComponent = () => import(/* webpackChunkName: "page-introduce" */ "@/components/Introduce.vue");
 
 const routes = [
   {
@@ -20,7 +22,7 @@ const routes = [
   {
     path: "/About",
     name: "About",
-    component: () => import("../views/AboutView.vue"),
+    component: About,
     meta: {
       title: "关于 - 作业文档转手写体工作台",
       description: "关于个人私有工作台的功能与使用说明。",

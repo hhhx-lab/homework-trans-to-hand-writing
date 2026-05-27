@@ -46,9 +46,7 @@ export default {
             this.$emit('login_delete', true)
           }
         })
-        .catch(error => {
-          console.log('login failed 应该显示sweet的报错信息' + error);
-          console.log(this.$t('message.loginfailed'));
+        .catch(() => {
           this.showAlert();
         });
     },
@@ -63,8 +61,7 @@ export default {
         }
       })
     }
-
-  }
+  },
 }
 </script>
 

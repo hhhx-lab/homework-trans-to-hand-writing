@@ -24,10 +24,26 @@ class MinerUExtractionError(RuntimeError):
     pass
 
 
+def user_facing_mineru_error(error: Exception) -> str:
+    detail = str(error)
+    if isinstance(error, MinerUConfigError):
+        return "PDF 识别服务 MinerU 尚未配置，请设置 MINERU_BASE_URL、MINERU_API_TOKEN 和 MINERU_PUBLIC_BASE_URL 后重试。"
+    if "timed out" in detail or "TimeoutError" in detail:
+        return (
+            "PDF 识别服务 MinerU 连接超时。请确认 MINERU_BASE_URL 指向的 MinerU 服务已启动且本机可访问，"
+            "并确认 MINERU_PUBLIC_BASE_URL 是 MinerU 服务可访问的后端地址。"
+        )
+    if "Failed to download MinerU result" in detail:
+        return "PDF 识别结果下载失败，请检查 MinerU 返回的结果地址是否可访问。"
+    if "Timed out waiting for MinerU task" in detail:
+        return "PDF 识别任务等待超时，MinerU 已接收任务但长时间没有返回结果，请稍后重试或检查 MinerU 队列。"
+    return f"PDF 识别服务 MinerU 失败：{detail}"
+
+
 STAGING_DIR = Path(__file__).resolve().parent / "temp" / "mineru_public"
 EXTRACT_DIR = Path(__file__).resolve().parent / "temp" / "mineru_extract"
 TERMINAL_FAILED = {"failed", "failure", "error", "canceled", "cancelled"}
-IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+IMAGE_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 DETAILS_RE = re.compile(r"\n?<details>\s*<summary>.*?</summary>.*?</details>\s*", re.S | re.I)
 
 
@@ -161,7 +177,7 @@ def _poll_task(task_id: str) -> str:
 def sanitize_mineru_markdown(markdown: str) -> str:
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
     markdown = DETAILS_RE.sub("\n", markdown)
-    markdown = IMAGE_MD_RE.sub("", markdown)
+    markdown = IMAGE_MD_RE.sub(lambda m: f"[图片:{m.group(0)}]", markdown)
     markdown = re.sub(r"\n{3,}", "\n\n", markdown)
     return markdown.strip() + "\n"
 

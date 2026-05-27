@@ -70,13 +70,12 @@ export default {
       this.$emit('update', false);
     }
   })
-  .catch(error => {
+  .catch(() => {
     this.notification = {
       show: true,
       message: this.$t('message.registerfailed'),
       type: 'error',
     };
-    console.error('register failed' + error);
   });
 }
 

@@ -13,6 +13,7 @@ import pypandoc
 FRONT_MATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.S)
 IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.I)
+DISPLAY_DOLLAR_RE = re.compile(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", re.S)
 INLINE_DOLLAR_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$", re.S)
 INLINE_PAREN_RE = re.compile(r"\\\((.*?)\\\)", re.S)
 DISPLAY_BRACKET_RE = re.compile(r"\\\[(.*?)\\\]", re.S)
@@ -72,10 +73,9 @@ def _flush_paragraph(result: list[str], paragraph: list[str]) -> None:
 
 def normalize_math_markdown(markdown: str) -> str:
     markdown = FRONT_MATTER_RE.sub("", markdown or "")
-    markdown = HTML_IMAGE_RE.sub("", markdown)
-    markdown = IMAGE_MD_RE.sub("", markdown)
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
     markdown = DISPLAY_BRACKET_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)
+    markdown = DISPLAY_DOLLAR_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)
 
     result: list[str] = []
     paragraph: list[str] = []

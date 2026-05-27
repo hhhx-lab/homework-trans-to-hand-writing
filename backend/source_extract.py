@@ -4,12 +4,28 @@ from pathlib import Path
 from typing import Any
 
 import pypandoc
+from werkzeug.utils import secure_filename
 
 from markdown_math import normalize_math_markdown
 from mineru_adapter import extract_pdf_to_markdown
 
 
 SUPPORTED_SOURCE_SUFFIXES = {".pdf", ".docx", ".doc", ".md", ".markdown", ".txt", ".rtf"}
+
+
+def safe_source_filename(filename: str, suffix: str | None = None, fallback_stem: str = "source") -> str:
+    resolved_suffix = (suffix or Path(filename).suffix).lower()
+    safe_name = secure_filename(filename)
+    safe_path = Path(safe_name)
+    if resolved_suffix and safe_path.suffix.lower() == resolved_suffix and safe_path.stem:
+        return safe_name
+
+    safe_stem = safe_path.stem if safe_path.suffix else safe_name
+    if not safe_stem or safe_stem.lower() == resolved_suffix.lstrip("."):
+        safe_stem = fallback_stem
+    if not resolved_suffix:
+        return safe_stem or fallback_stem
+    return f"{safe_stem}{resolved_suffix}"
 
 
 def _read_text(path: Path) -> str:
