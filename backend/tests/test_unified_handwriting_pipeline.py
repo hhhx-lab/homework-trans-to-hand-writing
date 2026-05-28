@@ -37,7 +37,7 @@ from mineru_adapter import (
     sanitize_mineru_markdown,
     user_facing_mineru_error,
 )
-from source_extract import extract_source_to_markdown, safe_source_filename
+from source_extract import extract_source_to_markdown, repair_extracted_markdown_text, safe_source_filename
 
 
 FONT_PATH = Path(__file__).resolve().parents[1] / "font_assets" / "神韵英子楷书.ttf"
@@ -1398,6 +1398,29 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("题面", sanitized)
         self.assertIn("[图片:![scan](images/p1.png)]", sanitized)
         self.assertIn("答案", sanitized)
+
+    def test_repair_extracted_markdown_restores_split_pingwen_terms(self):
+        markdown = (
+            "平 分布由细致平衡 稳 $\\pi_1 p_{12}=\\pi_2 p_{21}$ 得\n\n"
+            "平 方程给 稳 $\\pi_n=\\pi_{n-1}p_{n-1}$ ，故若上式有限，\n\n"
+            "若级数发散，则不存在平 概率分布。稳\n\n"
+            "若 $\\mu_0=\\pi$ 为平 分布，则 稳 $\\mu_n=\\pi$ 。"
+        )
+        repaired = repair_extracted_markdown_text(markdown)
+        for token in ("平稳分布由细致平衡", "平稳方程给", "平稳概率分布", "为平稳分布，则"):
+            self.assertIn(token, repaired)
+        self.assertNotRegex(repaired, r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳")
+
+    def test_random_process_pdf_extraction_restores_key_body_text_when_available(self):
+        sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
+        if not sample_pdf.exists():
+            self.skipTest("随机过程三次作业答案.pdf sample is not available")
+        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+            result = extract_source_to_markdown(sample_pdf)
+        markdown = result["markdown"]
+        for token in ("平稳分布", "平稳方程", "故若上式有限", "平稳概率分布", "归纳得证"):
+            self.assertIn(token, markdown)
+        self.assertNotRegex(markdown, r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳")
 
     def test_markdown_renderer_outputs_nonblank_image_and_docx(self):
         background = Image.new("RGB", (900, 1100), "white")

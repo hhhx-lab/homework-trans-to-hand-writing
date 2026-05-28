@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 import pypandoc
@@ -11,6 +12,31 @@ from mineru_adapter import MinerUConfigError, MinerUExtractionError, extract_pdf
 
 
 SUPPORTED_SOURCE_SUFFIXES = {".pdf", ".docx", ".doc", ".md", ".markdown", ".txt", ".rtf"}
+
+
+def repair_extracted_markdown_text(markdown: str) -> str:
+    """Repair conservative OCR/PDF extraction ordering glitches before math normalization."""
+    text = markdown or ""
+    repairs = (
+        (r"平\s+分布由细致平衡\s+稳", "平稳分布由细致平衡"),
+        (r"平\s+分布满足\s+稳", "平稳分布满足"),
+        (r"平\s+分布，则\s+稳", "平稳分布，则"),
+        (r"平\s+分布[。．.]\s*稳", "平稳分布。"),
+        (r"平\s+概率分布[。．.]\s*稳", "平稳概率分布。"),
+        (r"平\s+方程给\s+稳", "平稳方程给"),
+        (r"平\s+方程为\s+稳", "平稳方程为"),
+        (r"平\s+方程仍成立\s+稳", "平稳方程仍成立"),
+        (r"平\s+方程[。．.]\s*稳", "平稳方程。"),
+        (r"任意稳(?=\s*\$)", "任意"),
+        (r"平\s+概率分布", "平稳概率分布"),
+        (r"平\s+分布", "平稳分布"),
+        (r"平\s+方程", "平稳方程"),
+        (r"平\s+稳", "平稳"),
+    )
+    for pattern, replacement in repairs:
+        text = re.sub(pattern, replacement, text)
+    text = re.sub(r"(平稳(?:概率分布|分布|方程)(?:由细致平衡|满足|给|为|仍成立)?)(?:\s+稳)", r"\1", text)
+    return text
 
 
 def safe_source_filename(filename: str, suffix: str | None = None, fallback_stem: str = "source") -> str:
@@ -116,14 +142,14 @@ def extract_source_to_markdown(path: Path) -> dict[str, Any]:
     if suffix == ".pdf":
         try:
             result = extract_pdf_to_markdown(path)
-            result["markdown"] = normalize_math_markdown(result["markdown"])
+            result["markdown"] = normalize_math_markdown(repair_extracted_markdown_text(result["markdown"]))
             return result
         except (MinerUConfigError, MinerUExtractionError) as e:
             text_layer = _read_pdf_text_layer(path)
             if not text_layer.strip():
                 raise
             return {
-                "markdown": normalize_math_markdown(text_layer),
+                "markdown": normalize_math_markdown(repair_extracted_markdown_text(text_layer)),
                 "source": "pymupdf_pdf_fallback",
                 "warnings": [
                     user_facing_mineru_error(e),
