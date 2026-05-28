@@ -30,6 +30,10 @@ LATEX_COMMAND_NAMES = (
     "leftrightarrow",
     "xrightarrow",
     "xleftarrow",
+    "xleftrightarrow",
+    "xRightarrow",
+    "xLeftarrow",
+    "xLeftrightarrow",
     "twoheadrightarrow",
     "twoheadleftarrow",
     "rightsquigarrow",
@@ -52,6 +56,7 @@ LATEX_COMMAND_NAMES = (
     "uparrow",
     "nolimits",
     "overrightarrow",
+    "overleftrightarrow",
     "underrightarrow",
     "underleftarrow",
     "overleftarrow",
@@ -92,8 +97,13 @@ LATEX_COMMAND_NAMES = (
     "gtrapprox",
     "lesssim",
     "gtrsim",
+    "precsim",
+    "succsim",
     "leqsim",
     "geqsim",
+    "coloneqq",
+    "eqqcolon",
+    "triangleq",
     "boldsymbol",
     "overline",
     "underline",
@@ -213,6 +223,8 @@ LATEX_COMMAND_NAMES = (
     "big",
     "multirow",
     "mapsto",
+    "longmapsto",
+    "leadsto",
     "implies",
     "notin",
     "pmod",
@@ -403,6 +415,11 @@ LATEX_COMMAND_NAMES = (
     "kappa",
     "upsilon",
     "varpi",
+    "varDelta",
+    "varGamma",
+    "varTheta",
+    "varLambda",
+    "varOmega",
     "varsigma",
     "varphi",
     "phi",
@@ -499,20 +516,23 @@ MATH_RELATION_RE = re.compile(
     r"pmod|bmod|pod|perp|parallel|nparallel|in|notin|ni|subset|subseteq|nsubseteq|subsetneq|"
     r"supset|supseteq|nsupseteq|supsetneq|Subset|Supset|sqsubset|sqsupset|sqsubseteq|sqsupseteq|propto|"
     r"prec|preceq|succ|succeq|nleq|ngeq|nless|ngtr|lneq|gneq|lnsim|gnsim|ncong|napprox|nsim|nmid|nsmile|nfrown|smallsmile|smallfrown|"
-    r"leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|"
+    r"leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|precsim|succsim|"
     r"lessgtr|gtrless|ll|gg|asymp|doteq|models|vdash|dashv|vDash|Vdash|VDash|Vvdash|"
     r"nvdash|nvDash|nVdash|nVDash|"
     r"smallsetminus|diagup|diagdown|sqcup|sqcap|uplus|wr|amalg|boxtimes|boxplus|boxminus|boxdot|ltimes|rtimes|leftthreetimes|rightthreetimes|"
     r"bigcup|bigcap|bigsqcup|bigvee|bigwedge|bigoplus|bigotimes|"
-    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|"
+    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|xleftrightarrow|xRightarrow|xLeftarrow|xLeftrightarrow|"
+    r"hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|leadsto|"
     r"leftharpoonup|leftharpoondown|rightharpoonup|rightharpoondown|leftrightharpoons|rightleftharpoons|nearrow|searrow|nwarrow|swarrow|"
     r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|longrightarrow|longleftarrow|longleftrightarrow|"
-    r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
+    r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|longmapsto|implies|"
+    r"coloneqq|eqqcolon|triangleq|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|dbinom|tbinom|pmod|partial|xrightarrow|xleftarrow|substack|"
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|dbinom|tbinom|pmod|partial|xrightarrow|xleftarrow|"
+    r"xleftrightarrow|xRightarrow|xLeftarrow|xLeftrightarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
-    r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|hat|widehat|bar|tilde|widetilde|vec|dot|ddot|"
+    r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|hat|widehat|bar|tilde|widetilde|vec|dot|ddot|overleftrightarrow|"
     r"overline|underline|boldsymbol|boldmath|textrm|textnormal|textup|textsl|hbox|"
     r"mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
     r"lbrace|rbrace|lparen|rparen|lbrack|rbrack|langle|rangle|lfloor|rfloor|lceil|rceil|lvert|rvert|vert|"
@@ -526,7 +546,8 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
     r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
     r"smash|rlap|llap|mathclap|raisebox|"
-    r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
+    r"varpi|varsigma|varrho|varDelta|varGamma|varTheta|varLambda|varOmega|"
+    r"bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"bmod|pod|over|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|"
     r"eqref|ref|tag|label|notag|nonumber|text)(?![A-Za-z])"
@@ -558,6 +579,18 @@ PANDOC_SAFE_SYMBOL_REPLACEMENTS = {
     "geqsim": "⪆",
     "lessapprox": "⪅",
     "gtrapprox": "⪆",
+    "precsim": "≾",
+    "succsim": "≿",
+    "coloneqq": "≔",
+    "eqqcolon": "≕",
+    "triangleq": "≜",
+    "leadsto": "↝",
+    "longmapsto": "⟼",
+    "varDelta": "Δ",
+    "varGamma": "Γ",
+    "varTheta": "Θ",
+    "varLambda": "Λ",
+    "varOmega": "Ω",
     "nsmile": "¬⌣",
     "nfrown": "¬⌢",
 }

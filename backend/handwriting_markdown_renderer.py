@@ -52,9 +52,14 @@ GREEK = {
     "Xi": "Ξ",
     "Pi": "Π",
     "Delta": "Δ",
+    "varDelta": "Δ",
     "Sigma": "Σ",
     "Phi": "Φ",
     "Psi": "Ψ",
+    "varGamma": "Γ",
+    "varTheta": "Θ",
+    "varLambda": "Λ",
+    "varOmega": "Ω",
 }
 
 SYMBOLS = {
@@ -100,6 +105,8 @@ SYMBOLS = {
     "iff": "↔",
     "implies": "⇒",
     "mapsto": "↦",
+    "longmapsto": "⟼",
+    "leadsto": "↝",
     "hookrightarrow": "↪",
     "hookleftarrow": "↩",
     "twoheadrightarrow": "↠",
@@ -186,6 +193,8 @@ SYMBOLS = {
     "gtrsim": "≳",
     "lessapprox": "⪅",
     "gtrapprox": "⪆",
+    "precsim": "≾",
+    "succsim": "≿",
     "lessgtr": "≶",
     "gtrless": "≷",
     "succ": "≻",
@@ -194,6 +203,9 @@ SYMBOLS = {
     "gg": "≫",
     "asymp": "≍",
     "doteq": "≐",
+    "coloneqq": "≔",
+    "eqqcolon": "≕",
+    "triangleq": "≜",
     "sqcup": "⊔",
     "sqcap": "⊓",
     "uplus": "⊎",
@@ -441,6 +453,7 @@ COMMAND_FALLBACKS = {
     "vec": "→",
     "overrightarrow": "→",
     "overleftarrow": "←",
+    "overleftrightarrow": "↔",
     "overparen": "⌒",
     "underparen": "⌣",
     "underleftarrow": "_←",
@@ -1537,10 +1550,18 @@ class LatexParser:
             index = self._parse_optional_bracket(0.48)
             child = self._parse_group(0.9)
             return NthRootBox(index, child, self.size, self.fonts) if index else SqrtBox(child, self.size, self.fonts)
-        if name in {"xrightarrow", "xleftarrow"}:
+        if name in {"xrightarrow", "xleftarrow", "xleftrightarrow", "xRightarrow", "xLeftarrow", "xLeftrightarrow"}:
             below = self._parse_optional_bracket(0.56)
             above = self._parse_group(0.56)
-            arrow = TextBox("→" if name == "xrightarrow" else "←", self.fonts, int(self.size * 1.18))
+            arrow_symbols = {
+                "xrightarrow": "→",
+                "xleftarrow": "←",
+                "xleftrightarrow": "↔",
+                "xRightarrow": "⇒",
+                "xLeftarrow": "⇐",
+                "xLeftrightarrow": "⇔",
+            }
+            arrow = TextBox(arrow_symbols[name], self.fonts, int(self.size * 1.18))
             return ScriptBox(arrow, above, below, limits=True)
         if name == "overset":
             over = self._parse_group(0.62)

@@ -327,6 +327,23 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("√[3]", "x^2", "y", "→", "n→0", "m→∞", "←", "k", "z"):
             self.assertIn(token, debug_text)
 
+    def test_common_symbol_variants_render_without_command_words(self):
+        debug_text = latex_to_debug_text(
+            r"\xleftrightarrow{n\to\infty} y+\xRightarrow{a} b+\xLeftarrow{c} d+"
+            r"\varDelta+\varGamma+\overleftrightarrow{CD}+"
+            r"a\precsim b+c\succsim d+e\coloneqq f+g\eqqcolon h+i\triangleq j+"
+            r"A\leadsto B+A\longmapsto B",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("↔", "n→∞", "⇒", "a", "⇐", "c", "Δ", "Γ", "↔CD", "≾", "≿", "≔", "≕", "≜", "↝", "⟼"):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(
+            debug_text,
+            r"\\|xleftrightarrow|xRightarrow|xLeftarrow|varDelta|varGamma|overleftrightarrow|"
+            r"precsim|succsim|coloneqq|eqqcolon|triangleq|leadsto|longmapsto",
+        )
+
     def test_named_delimiter_commands_render_as_visible_delimiters(self):
         debug_text = latex_to_debug_text(
             r"\lbrace x\in A \rbrace+\lparen y \rparen+\lbrack z \rbrack+"
