@@ -135,6 +135,13 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
     def test_text_command_preserves_inner_spaces(self):
         self.assertEqual("if x>0", latex_to_debug_text(r"\text{if }x>0", FONT_PATH))
 
+    def test_mathop_and_starred_operatorname_do_not_render_command_names(self):
+        mathop_text = latex_to_debug_text(r"\mathop{\lim}\limits_{x\to0} f(x)", FONT_PATH)
+        operator_text = latex_to_debug_text(r"\operatorname*{arg\,max}_{x} f(x)", FONT_PATH)
+        self.assertNotRegex(mathop_text + operator_text, r"mathop|operatorname|\\")
+        self.assertIn("lim_x→0", mathop_text)
+        self.assertIn("arg max_x", operator_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

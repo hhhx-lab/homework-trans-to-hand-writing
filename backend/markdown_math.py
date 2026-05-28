@@ -52,6 +52,7 @@ LATEX_COMMAND_NAMES = (
     "mathbb",
     "mathrm",
     "mathbf",
+    "mathop",
     "mathsf",
     "mathtt",
     "mathit",

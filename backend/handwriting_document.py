@@ -135,7 +135,7 @@ def plainify_latex_text(text: str) -> str:
     text = _replace_simple_frac(text)
     text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"√(\1)", text)
     text = re.sub(
-        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname|text)\s*\{([^{}]*)\}",
+        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
         r"\1",
         text,
     )

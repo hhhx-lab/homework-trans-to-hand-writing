@@ -778,6 +778,11 @@ class LatexParser:
         self.pos = end
         return True
 
+    def _skip_optional_star(self) -> None:
+        self._skip_space()
+        if self.pos < len(self.text) and self.text[self.pos] == "*":
+            self.pos += 1
+
     def _read_group_text(self) -> str:
         self._skip_space()
         if self.pos >= len(self.text) or self.text[self.pos] != "{":
@@ -915,6 +920,12 @@ class LatexParser:
             return TextBox(" ", self.fonts, self.size // 2)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
+        if name == "operatorname":
+            self._skip_optional_star()
+            return TextBox(self._read_group_text(), self.fonts, self.size)
+        if name == "mathop":
+            self._skip_optional_star()
+            return self._parse_group()
         if name == "text":
             return TextBox(self._read_group_text(), self.fonts, self.size)
         if name in GROUP_WRAPPERS:
