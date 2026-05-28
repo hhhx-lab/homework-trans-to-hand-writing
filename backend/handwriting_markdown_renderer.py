@@ -11,7 +11,7 @@ from typing import Callable, Iterable
 
 from docx import Document
 from docx.shared import Inches
-from markdown_math import normalize_latex_math, normalize_math_markdown
+from markdown_math import LATEX_COMMAND_NAMES, normalize_latex_math, normalize_math_markdown
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -1698,6 +1698,29 @@ TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 LATEX_CONTEXT_CHARS = set("\\{}[]()_^+-=*/<>.,;:|~'\"!&")
 
 
+def _is_likely_path_escape(text: str, start: int) -> bool:
+    if start > 0 and text[start - 1] in {":", "/", "\\"}:
+        return True
+    segment_start = max(text.rfind(ch, 0, start) for ch in " \t\r\n\"'()[]{}<>，。；：！？、") + 1
+    segment_prefix = text[segment_start:start]
+    return bool(re.search(r"[A-Za-z]:[\\/]", segment_prefix) or "/" in segment_prefix or "\\" in segment_prefix)
+
+
+def _should_skip_raw_latex_match(text: str, match: re.Match[str]) -> bool:
+    raw = match.group(0)
+    if not raw.startswith("\\") or len(raw) < 2 or not raw[1].isalpha():
+        return False
+    if _is_likely_path_escape(text, match.start()):
+        return True
+    name = raw[1:]
+    next_char = text[match.end()] if match.end() < len(text) else ""
+    return (
+        name not in LATEX_COMMAND_NAMES
+        and len(name) == 1
+        and (not next_char or next_char.isspace() or TEXT_MATH_BOUNDARY_RE.match(next_char))
+    )
+
+
 def _is_latex_context_char(ch: str) -> bool:
     if TEXT_MATH_BOUNDARY_RE.match(ch):
         return False
@@ -1748,9 +1771,14 @@ def _raw_latex_span_end(text: str, end: int) -> int:
 
 
 def _raw_latex_span(text: str, pos: int) -> tuple[int, int] | None:
-    match = RAW_LATEX_COMMAND_RE.search(text, pos)
-    if not match:
-        return None
+    search_pos = pos
+    while True:
+        match = RAW_LATEX_COMMAND_RE.search(text, search_pos)
+        if not match:
+            return None
+        if not _should_skip_raw_latex_match(text, match):
+            break
+        search_pos = match.end()
     start = match.start()
     end = _raw_latex_span_end(text, match.end())
     while start > 0 and _is_latex_context_char(text[start - 1]):

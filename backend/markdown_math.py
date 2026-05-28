@@ -962,6 +962,11 @@ def _wrap_bare_latex_spans(text: str) -> str:
             continue
         if matched_command not in LATEX_COMMAND_NAMES:
             group = _read_balanced_brace_group(text, match.end())
+            next_char = text[match.end()] if match.end() < len(text) else ""
+            if group is None and len(matched_command) == 1 and (not next_char or next_char.isspace() or TEXT_MATH_BOUNDARY_RE.match(next_char)):
+                result.append(text[pos:match.end()])
+                pos = match.end()
+                continue
             rewrite_end = group[1] if group else match.end()
             result.append(text[pos:match.start()])
             result.append(_rewrite_unknown_latex_commands(text[match.start():rewrite_end], math_mode=False))

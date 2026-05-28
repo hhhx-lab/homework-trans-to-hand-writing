@@ -216,6 +216,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             forbidden_pattern=r"\\unknowncmd|unknowncmd\{x\}",
         )
 
+    def test_literal_backslashes_are_not_dropped_as_unknown_latex(self):
+        markdown = r"路径 C:\Users\alice 保留，普通反斜杠 a\b 保留，公式 \frac{1}{2} 转换。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"C:\Users\alice", normalized)
+        self.assertIn(r"a\b", normalized)
+        self.assertNotIn(r"\frac", markdown_render_debug_text(normalized, FONT_PATH))
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        for token in (r"C:\Users\alice", r"a\b", "(1)/(2)"):
+            self.assertIn(token, debug_text)
+
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
         self.assertIn("¯x", debug_text)
