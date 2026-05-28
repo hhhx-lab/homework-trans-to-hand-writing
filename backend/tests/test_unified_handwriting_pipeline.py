@@ -375,6 +375,23 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("↔", debug_text)
         self.assertIn("↦", debug_text)
 
+    def test_bare_presentation_commands_are_wrapped_as_office_math(self):
+        markdown = (
+            r"题目 \binom{n}{k}，再看 \overset{a}{b} 和 "
+            r"\underset{0}{\lim}，最后 \vec{x}+\dot{y}+\ddot{z}。"
+        )
+        normalized = normalize_math_markdown(markdown)
+        for formula in (
+            r"$\binom{n}{k}$",
+            r"$\overset{a}{b}$",
+            r"$\underset{0}{\lim}$",
+            r"$\vec{x}+\dot{y}+\ddot{z}$",
+        ):
+            self.assertIn(formula, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 4)
+        self.assertFalse(docx_info["has_latex_residuals"])
+
     def test_markdown_debug_text_preserves_body_and_formula_tokens(self):
         markdown = (
             r"第12题：已知 A_n=3，求 $P(X_n=i)=\dfrac{a_1}{b^2}$ 的值。"
@@ -465,20 +482,138 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
     def test_bare_legacy_buildrel_is_wrapped_and_rendered(self):
         markdown = r"题目 \buildrel def \over = 结束。"
         normalized = normalize_math_markdown(markdown)
-        self.assertIn(r"$\buildrel def \over =$", normalized)
+        self.assertIn(r"$\overset{def}{=}$", normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 1)
+        self.assertFalse(docx_info["has_latex_residuals"])
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|buildrel|over")
         for token in ("题目", "def", "=", "结束"):
             self.assertIn(token, debug_text)
 
     def test_bare_legacy_dimension_infix_commands_are_wrapped_and_rendered(self):
-        markdown = r"题目 a \above 0pt b 和 n \atopwithdelims[] k 结束。"
+        markdown = (
+            r"题目 a \over b 和 n \choose k，另有 a \above 0pt b "
+            r"和 c \overwithdelims() d 以及 n \atopwithdelims[] k 结束。"
+        )
         normalized = normalize_math_markdown(markdown)
-        self.assertIn(r"$a \above 0pt b$", normalized)
-        self.assertIn(r"$n \atopwithdelims[] k$", normalized)
+        for formula in (
+            r"$\frac{a}{b}$",
+            r"$\binom{n}{k}$",
+            r"$\substack{a\\b}$",
+            r"$\left(\frac{c}{d}\right)$",
+            r"$\left[\substack{n\\k}\right]$",
+        ):
+            self.assertIn(formula, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 5)
+        self.assertFalse(docx_info["has_latex_residuals"])
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
-        self.assertNotRegex(debug_text, r"\\|above|atopwithdelims|0pt")
-        for token in ("题目", "a", "b", "和", "n", "k", "结束"):
+        self.assertNotRegex(debug_text, r"\\|over|choose|above|overwithdelims|atopwithdelims|0pt")
+        for token in ("题目", "a", "b", "和", "n", "k", "c", "d", "结束"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_operator_delimiter_and_arrow_commands_are_wrapped_as_office_math(self):
+        markdown = (
+            r"题目 x\iff y，x\sim y，a\circ b+b\star c，"
+            r"\lceil x\rceil+\lfloor y\rfloor+\langle v\rangle，"
+            r"\sum\limits_{i=1}^{n}x_i+\min_{x\in A}f(x)，"
+            r"a\uparrow b+c\downarrow d。"
+        )
+        normalized = normalize_math_markdown(markdown)
+        for formula in (
+            r"$x\iff y$",
+            r"$x\sim y$",
+            r"$a\circ b+b\star c$",
+            r"$\lceil x\rceil+\lfloor y\rfloor+\langle v\rangle$",
+            r"$\sum\limits_{i=1}^{n}x_i+\min_{x\in A}f(x)$",
+            r"$a\uparrow b+c\downarrow d$",
+        ):
+            self.assertIn(formula, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 6)
+        self.assertFalse(docx_info["has_latex_residuals"])
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|iff|sim|circ|star|lceil|rfloor|limits|uparrow|downarrow")
+        for token in ("↔", "∼", "∘", "⋆", "⌈", "⌊", "〈", "∑", "min", "↑", "↓"):
+            self.assertIn(token, debug_text)
+
+    def test_unsupported_presentation_helpers_rewrite_to_office_math(self):
+        markdown = (
+            r"题目 \textcolor{red}{x+y}，\cancel{z}+\bcancel{y}+\xcancel{x}+\sout{w}，"
+            r"\boxed{a+b}+\fbox{c+d}，\hdotsfor{3}，\raisebox{1ex}{q}，"
+            r"\operatornamewithlimits{argmax}_{x} f(x) 结束。"
+        )
+        normalized = normalize_math_markdown(markdown)
+        self.assertNotRegex(
+            normalized,
+            r"textcolor|cancel|bcancel|xcancel|sout|fbox|hdotsfor|raisebox|operatornamewithlimits",
+        )
+        for token in ("x+y", "z+y+x+w", r"\boxed{a+b}+\boxed{c+d}", r"\cdots\cdots\cdots", "q", r"\operatorname{argmax}_{x}"):
+            self.assertIn(token, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 6)
+        self.assertFalse(docx_info["has_latex_residuals"])
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|textcolor|cancel|fbox|hdotsfor|raisebox|operatornamewithlimits")
+        for token in ("题目", "x", "y", "z", "w", "a+b", "c+d", "⋯", "q", "argmax", "结束"):
+            self.assertIn(token, debug_text)
+
+    def test_font_text_spacing_and_reference_helpers_become_office_math(self):
+        markdown = (
+            r"题目 \boldsymbol{\alpha}+\boldmath{y}+\cal{F}+\Bbb{R}，"
+            r"\overline{x}+\underline{y}，"
+            r"\textnormal{abc}+\textup{ghi}+\textsl{jkl}+\hbox{hbox}，"
+            r"a\quad b+a\thinspace b+\eqref{eq:a}+\ref{r1}+\notag+x。"
+        )
+        normalized = normalize_math_markdown(markdown)
+        self.assertNotRegex(
+            normalized,
+            r"boldmath|\\cal|\\Bbb|textnormal|textup|textsl|\\hbox|thinspace|eqref|\\ref|notag",
+        )
+        for token in (
+            r"$\textnormal{abc}+\textup{ghi}+\textsl{jkl}+\hbox{hbox}$",
+            r"$a\quad b+a\thinspace b+\eqref{eq:a}+\ref{r1}+\notag+x$",
+        ):
+            self.assertNotIn(token, normalized)
+        for token in (
+            r"\boldsymbol{\alpha}",
+            "y",
+            r"\mathcal{F}",
+            r"\mathbb{R}",
+            r"\overline{x}",
+            r"\underline{y}",
+            r"\text{abc}",
+            r"\text{ghi}",
+            r"\text{jkl}",
+            r"\text{hbox}",
+            r"a\quad b+a  b",
+            r"(\text{eq:a})",
+            r"\text{r1}",
+            "+x",
+        ):
+            self.assertIn(token, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 4)
+        self.assertFalse(docx_info["has_latex_residuals"])
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|boldmath|cal|Bbb|textnormal|\\hbox|thinspace|eqref|notag")
+        for token in ("α", "y", "F", "R", "¯x", "y_", "abc", "ghi", "jkl", "hbox", "a", "b", "eq:a", "r1", "x"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_matrix_environment_in_text_becomes_display_office_math(self):
+        markdown = r"题目 \begin{array}{c|c}\hline a&b\\\cline{1-2}c&d\end{array} 结束。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn("$$", normalized)
+        self.assertNotRegex(normalized, r"hline|cline")
+        for token in ("题目", r"\begin{array}{c|c}", "a&b", "c&d", "结束"):
+            self.assertIn(token, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 1)
+        self.assertFalse(docx_info["has_latex_residuals"])
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|begin|array|hline|cline|end")
+        for token in ("题目", "a", "b", "c", "d", "结束"):
             self.assertIn(token, debug_text)
 
     def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):
@@ -513,6 +648,44 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIsNotNone(ink_bbox)
         self.assertGreaterEqual(ink_bbox[1], top_margin)
         self.assertGreaterEqual(ink_bbox[3], first_rule_y - 12)
+
+    def test_jittered_markdown_renderer_keeps_ink_inside_ruled_frame(self):
+        background = Image.new("RGB", (760, 520), "white")
+        top_margin = 60
+        line_spacing = 82
+        left_margin = 70
+        right_margin = 70
+        bottom_margin = 60
+        draw = ImageDraw.Draw(background)
+        for y in range(top_margin + line_spacing, background.height - bottom_margin + 1, line_spacing):
+            draw.line((left_margin, y, background.width - right_margin, y), fill="black")
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        config = HandwritingRenderConfig(
+            line_spacing=line_spacing,
+            font_size=52,
+            left_margin=left_margin,
+            top_margin=top_margin,
+            right_margin=right_margin,
+            bottom_margin=bottom_margin,
+            word_spacing=1,
+            perturb_x_sigma=4,
+            perturb_y_sigma=4,
+            perturb_theta_sigma=0.04,
+            ink_depth_sigma=0,
+            seed=17,
+        )
+        page = render_markdown_handwriting(
+            r"边界 $\frac{a_1}{b^2}$ 不漏 123ABCxyz，继续 $x\iff y+\lceil t\rceil$。",
+            background,
+            font,
+            config,
+        )[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertGreaterEqual(ink_bbox[0], left_margin)
+        self.assertGreaterEqual(ink_bbox[1], top_margin)
+        self.assertLessEqual(ink_bbox[2], background.width - right_margin)
+        self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
 
     def test_oversized_inline_formula_wraps_within_available_width(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)

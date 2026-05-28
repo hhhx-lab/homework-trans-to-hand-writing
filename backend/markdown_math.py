@@ -47,15 +47,26 @@ LATEX_COMMAND_NAMES = (
     "operatorname",
     "operatornamewithlimits",
     "displaystyle",
+    "downarrow",
+    "uparrow",
+    "nolimits",
     "overrightarrow",
     "underrightarrow",
     "underleftarrow",
     "overleftarrow",
     "multicolumn",
+    "underbrace",
+    "overbrace",
     "smallmatrix",
     "textcolor",
     "underparen",
     "overparen",
+    "widetilde",
+    "widehat",
+    "Biggl",
+    "Biggr",
+    "biggl",
+    "biggr",
     "Rightarrow",
     "Leftarrow",
     "rightarrow",
@@ -121,6 +132,8 @@ LATEX_COMMAND_NAMES = (
     "mathclap",
     "raisebox",
     "stackrel",
+    "underset",
+    "overset",
     "buildrel",
     "genfrac",
     "hdotsfor",
@@ -138,6 +151,7 @@ LATEX_COMMAND_NAMES = (
     "texttt",
     "textsf",
     "textbf",
+    "text",
     "aleph",
     "backprime",
     "daleth",
@@ -157,11 +171,37 @@ LATEX_COMMAND_NAMES = (
     "ell",
     "notag",
     "middle",
+    "limits",
+    "hspace",
+    "vspace",
+    "enspace",
+    "lbrace",
+    "rbrace",
+    "lparen",
+    "rparen",
+    "lbrack",
+    "rbrack",
+    "langle",
+    "rangle",
+    "lfloor",
+    "rfloor",
+    "lceil",
+    "rceil",
+    "lvert",
+    "rvert",
     "hphantom",
     "vphantom",
     "phantom",
     "smash",
     "choose",
+    "Bigg",
+    "bigg",
+    "Bigl",
+    "Bigr",
+    "bigl",
+    "bigr",
+    "Big",
+    "big",
     "multirow",
     "mapsto",
     "implies",
@@ -177,6 +217,7 @@ LATEX_COMMAND_NAMES = (
     "ngtr",
     "ncong",
     "nsim",
+    "sim",
     "nmid",
     "nsmile",
     "nfrown",
@@ -204,6 +245,8 @@ LATEX_COMMAND_NAMES = (
     "smile",
     "frown",
     "bowtie",
+    "degree",
+    "prime",
     "bigcup",
     "bigcap",
     "bigsqcup",
@@ -239,6 +282,9 @@ LATEX_COMMAND_NAMES = (
     "cfrac",
     "dfrac",
     "tfrac",
+    "dbinom",
+    "tbinom",
+    "binom",
     "begin",
     "right",
     "left",
@@ -249,6 +295,12 @@ LATEX_COMMAND_NAMES = (
     "acute",
     "breve",
     "check",
+    "tilde",
+    "hat",
+    "bar",
+    "ddot",
+    "dot",
+    "vec",
     "fbox",
     "hline",
     "cline",
@@ -271,6 +323,7 @@ LATEX_COMMAND_NAMES = (
     "ref",
     "tag",
     "pod",
+    "over",
     "sum",
     "int",
     "forall",
@@ -286,6 +339,8 @@ LATEX_COMMAND_NAMES = (
     "triangle",
     "triangleleft",
     "triangleright",
+    "circ",
+    "star",
     "times",
     "cdot",
     "cdotp",
@@ -326,6 +381,7 @@ LATEX_COMMAND_NAMES = (
     "angle",
     "colon",
     "dots",
+    "vert",
     "quad",
     "beta",
     "zeta",
@@ -390,12 +446,23 @@ LATEX_COMMAND_NAMES = (
     "mp",
     "le",
     "ge",
+    "iff",
     "to",
     "ni",
     "in",
     "ne",
     "pm",
     "Pr",
+    "arg",
+    "det",
+    "dim",
+    "ker",
+    "gcd",
+    "min",
+    "max",
+    "sup",
+    "inf",
+    "mod",
     "prec",
     "succ",
     "ll",
@@ -433,24 +500,199 @@ MATH_RELATION_RE = re.compile(
     r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|dbinom|tbinom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
-    r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|hat|widehat|bar|tilde|widetilde|vec|dot|ddot|"
+    r"overline|underline|boldsymbol|boldmath|textrm|textnormal|textup|textsl|hbox|"
+    r"mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"lbrace|rbrace|lparen|rparen|lbrack|rbrack|langle|rangle|lfloor|rfloor|lceil|rceil|lvert|rvert|vert|"
+    r"big|Big|bigg|Bigg|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|limits|nolimits|"
+    r"hspace|vspace|quad|qquad|enspace|thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"beth|gimel|daleth|mho|Game|Finv|backprime|eth|"
     r"coprod|bigstar|bigcirc|lozenge|blacklozenge|blacktriangle|triangledown|"
     r"clubsuit|diamondsuit|heartsuit|spadesuit|natural|flat|sharp|top|bot|"
-    r"stackrel|buildrel|genfrac|overwithdelims|atopwithdelims|abovewithdelims|"
+    r"iff|circ|star|degree|prime|uparrow|downarrow|min|max|sup|inf|arg|det|dim|ker|gcd|mod|"
+    r"overset|underset|stackrel|buildrel|overbrace|underbrace|genfrac|overwithdelims|atopwithdelims|abovewithdelims|"
     r"mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
     r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
     r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
-    r"bmod|pod|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"
+    r"bmod|pod|over|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|"
+    r"eqref|ref|tag|label|notag|nonumber|text)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
 TEXT_GROUP_RE = re.compile(r"\\(?:text|textrm|textbf)\s*\{[^{}]*\}")
 BARE_BUILDREL_RE = re.compile(r"\\buildrel\s+.+?\s+\\over\s+(?:\\[A-Za-z]+|[^\s\u4e00-\u9fff，。；：！？、]+)")
+BUILDREL_RE = re.compile(r"\\buildrel\s+(.+?)\s+\\over\s+(\{[^{}]*\}|\\[A-Za-z]+|[A-Za-z0-9]+|[^\s])")
+LEGACY_INFIX_COMMANDS = {
+    "over",
+    "choose",
+    "above",
+    "atop",
+    "brack",
+    "brace",
+    "overwithdelims",
+    "atopwithdelims",
+    "abovewithdelims",
+}
+
+
+def _find_top_level_legacy_infix(expr: str) -> tuple[str, int, int] | None:
+    depth = 0
+    i = 0
+    while i < len(expr):
+        ch = expr[i]
+        if ch == "\\":
+            start = i
+            i += 1
+            name_start = i
+            while i < len(expr) and expr[i].isalpha():
+                i += 1
+            if i == name_start and i < len(expr):
+                i += 1
+            name = expr[name_start:i]
+            if depth == 0 and name in LEGACY_INFIX_COMMANDS and (i >= len(expr) or not expr[i].isalpha()):
+                return name, start, i
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+        i += 1
+    return None
+
+
+def _skip_ws(text: str, pos: int) -> int:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    return pos
+
+
+def _read_latex_token(text: str, pos: int) -> tuple[str, int]:
+    pos = _skip_ws(text, pos)
+    if pos >= len(text):
+        return "", pos
+    if text[pos] == "\\":
+        start = pos
+        pos += 1
+        while pos < len(text) and text[pos].isalpha():
+            pos += 1
+        if pos == start + 1 and pos < len(text):
+            pos += 1
+        return text[start:pos], pos
+    return text[pos], pos + 1
+
+
+def _read_dimension_token(text: str, pos: int) -> tuple[str, int]:
+    pos = _skip_ws(text, pos)
+    start = pos
+    while pos < len(text) and not text[pos].isspace():
+        pos += 1
+    return text[start:pos], pos
+
+
+def _latex_delimiter(token: str) -> str:
+    if not token:
+        return ""
+    if token == ".":
+        return "."
+    return {
+        "\\lbrace": "\\{",
+        "\\rbrace": "\\}",
+        "\\lparen": "(",
+        "\\rparen": ")",
+        "\\lbrack": "[",
+        "\\rbrack": "]",
+    }.get(token, token)
+
+
+def _with_latex_delimiters(core: str, left: str, right: str) -> str:
+    left = _latex_delimiter(left)
+    right = _latex_delimiter(right)
+    if not left and not right:
+        return core
+    return f"\\left{left}{core}\\right{right}"
+
+
+def _rewrite_legacy_infix_math(expr: str) -> str:
+    found = _find_top_level_legacy_infix(expr)
+    if not found:
+        return expr
+    name, start, after = found
+    left = expr[:start].strip()
+    rest = expr[after:]
+    if not left:
+        return expr
+
+    left_delimiter = ""
+    right_delimiter = ""
+    thickness = ""
+    pos = 0
+    if name in {"overwithdelims", "atopwithdelims", "abovewithdelims"}:
+        left_delimiter, pos = _read_latex_token(rest, pos)
+        right_delimiter, pos = _read_latex_token(rest, pos)
+    if name in {"above", "abovewithdelims"}:
+        thickness, pos = _read_dimension_token(rest, pos)
+
+    right = rest[pos:].strip()
+    if not right:
+        return expr
+
+    left = _rewrite_legacy_infix_math(left)
+    right = _rewrite_legacy_infix_math(right)
+    if name in {"over", "overwithdelims"}:
+        return _with_latex_delimiters(f"\\frac{{{left}}}{{{right}}}", left_delimiter, right_delimiter)
+    if name == "choose":
+        return f"\\binom{{{left}}}{{{right}}}"
+    if name in {"atop", "atopwithdelims", "brack", "brace"} or (
+        name in {"above", "abovewithdelims"} and thickness.strip().startswith("0")
+    ):
+        core = f"\\substack{{{left}\\\\{right}}}"
+        if name == "brack":
+            return _with_latex_delimiters(core, "[", "]")
+        if name == "brace":
+            return _with_latex_delimiters(core, "\\{", "\\}")
+        return _with_latex_delimiters(core, left_delimiter, right_delimiter)
+    return _with_latex_delimiters(f"\\frac{{{left}}}{{{right}}}", left_delimiter, right_delimiter)
+
+
+def _rewrite_buildrel(match: re.Match[str]) -> str:
+    over = match.group(1).strip()
+    base = match.group(2).strip()
+    if base.startswith("{") and base.endswith("}"):
+        base = base[1:-1]
+    return f"\\overset{{{over}}}{{{base}}}"
+
+
+def _rewrite_unsupported_presentation_helpers(expr: str) -> str:
+    expr = re.sub(r"\\boldmath\s*\{([^{}]*)\}", r"\1", expr)
+    expr = re.sub(r"\\cal\s*\{([^{}]*)\}", r"\\mathcal{\1}", expr)
+    expr = re.sub(r"\\Bbb\s*\{([^{}]*)\}", r"\\mathbb{\1}", expr)
+    expr = re.sub(
+        r"\\(?:textnormal|textup|textsl|hbox|mbox)\s*\{([^{}]*)\}",
+        r"\\text{\1}",
+        expr,
+    )
+    expr = re.sub(r"\\operatornamewithlimits\s*\{([^{}]*)\}", r"\\operatorname{\1}", expr)
+    expr = re.sub(r"\\textcolor\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", expr)
+    expr = re.sub(r"\\(?:cancel|bcancel|xcancel|sout)\s*\{([^{}]*)\}", r"\1", expr)
+    expr = re.sub(r"\\fbox\s*\{([^{}]*)\}", r"\\boxed{\1}", expr)
+    expr = re.sub(r"\\raisebox\s*\{[^{}]*\}(?:\s*\[[^\]]*\]){0,2}\s*\{([^{}]*)\}", r"\1", expr)
+    expr = re.sub(
+        r"\\hdotsfor\s*\{(\d+)\}",
+        lambda match: r"\cdots" * max(1, min(int(match.group(1)), 12)),
+        expr,
+    )
+    expr = re.sub(r"\\(?:hspace|vspace)\s*\{[^{}]*\}", " ", expr)
+    expr = re.sub(r"\\(?:thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace)(?![A-Za-z])", " ", expr)
+    expr = re.sub(r"\\notag(?![A-Za-z])|\\nonumber(?![A-Za-z])", "", expr)
+    expr = re.sub(r"\\eqref\s*\{([^{}]*)\}", r"(\\text{\1})", expr)
+    expr = re.sub(r"\\ref\s*\{([^{}]*)\}", r"\\text{\1}", expr)
+    expr = re.sub(r"\\(?:hline|cline)\s*(?:\{[^{}]*\})?", " ", expr)
+    expr = re.sub(r"\\(?:multicolumn|multirow)\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", expr)
+    return expr
 
 
 def _looks_like_display_math(text: str) -> bool:
@@ -486,6 +728,9 @@ def normalize_latex_math(expr: str) -> str:
     expr = re.sub(r"\\(?:,|;|:|!)", " ", expr)
     expr = re.sub(r"[ \t]+", " ", expr)
     expr = re.sub(r"\n{3,}", "\n\n", expr)
+    expr = _rewrite_unsupported_presentation_helpers(expr)
+    expr = BUILDREL_RE.sub(_rewrite_buildrel, expr)
+    expr = _rewrite_legacy_infix_math(expr.strip())
     return expr.strip()
 
 
@@ -547,6 +792,19 @@ def _wrap_bare_latex_spans(text: str) -> str:
         if not match:
             result.append(text[pos:])
             break
+        if text.startswith("\\begin", match.start()):
+            env_match = re.match(r"\\begin\s*\{([^{}]+)\}", text[match.start() :])
+            if env_match:
+                env = env_match.group(1)
+                end_marker = f"\\end{{{env}}}"
+                end = text.find(end_marker, match.start() + env_match.end())
+                if end >= 0:
+                    expr_start = match.start()
+                    expr_end = end + len(end_marker)
+                    result.append(text[pos:expr_start])
+                    result.append(f"\n\n$$\n{normalize_latex_math(text[expr_start:expr_end])}\n$$\n\n")
+                    pos = expr_end
+                    continue
         if text.startswith("\\buildrel", match.start()):
             buildrel_match = BARE_BUILDREL_RE.match(text, match.start())
             if buildrel_match:
@@ -558,7 +816,17 @@ def _wrap_bare_latex_spans(text: str) -> str:
                 continue
         start = match.start()
         matched_command = match.group(0)[1:]
-        if matched_command in {"above", "overwithdelims", "atopwithdelims", "abovewithdelims"}:
+        if matched_command in {
+            "over",
+            "choose",
+            "above",
+            "atop",
+            "brack",
+            "brace",
+            "overwithdelims",
+            "atopwithdelims",
+            "abovewithdelims",
+        }:
             while start > pos and text[start - 1].isspace():
                 start -= 1
             while start > pos and not text[start - 1].isspace() and _is_bare_math_char(text[start - 1]):

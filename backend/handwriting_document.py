@@ -15,7 +15,7 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
-from markdown_math import LATEX_RESIDUAL_RE
+from markdown_math import LATEX_RESIDUAL_RE, normalize_math_markdown
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -125,11 +125,7 @@ def normalize_markdown(markdown: str) -> tuple[str, dict[str, Any]]:
     markdown = IMAGE_MD_RE.sub("", markdown)
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Pandoc accepts \(..\), but normalizing to dollar math makes later residual
-    # checks and manual debugging simpler.
-    markdown = re.sub(r"\\\[(.*?)\\\]", lambda m: "\n\n$$\n" + m.group(1).strip() + "\n$$\n\n", markdown, flags=re.S)
-    markdown = re.sub(r"\\\((.*?)\\\)", lambda m: "$" + m.group(1).strip() + "$", markdown, flags=re.S)
-    markdown = re.sub(r"\n{3,}", "\n\n", markdown).strip() + "\n"
+    markdown = normalize_math_markdown(markdown)
     return markdown, {"removed_images": len(image_refs), "image_refs": image_refs}
 
 
@@ -159,6 +155,11 @@ def plainify_latex_text(text: str) -> str:
     text = text.replace("$", "")
     text = text.replace("\\cfrac", "\\frac").replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
     text = _replace_simple_frac(text)
+    text = re.sub(
+        r"\\(?:dbinom|tbinom|binom)\s*\{([^{}]+)\}\s*\{([^{}]+)\}",
+        lambda match: f"C({match.group(1)},{match.group(2)})",
+        text,
+    )
     text = re.sub(r"\\sqrt\s*\[([^\[\]]+)\]\s*\{([^{}]+)\}", r"√[\1](\2)", text)
     text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"√(\1)", text)
     text = re.sub(
@@ -189,6 +190,21 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\(?:phantom|hphantom|vphantom)\s*\{[^{}]*\}", "", text)
     text = re.sub(r"\\(?:mbox|hbox)\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\(?:boxed|fbox)\s*\{([^{}]*)\}", r"[\1]", text)
+    text = re.sub(r"\\(?:overset|stackrel)\s*\{([^{}]*)\}\s*\{([^{}]*)\}", r"\2^\1", text)
+    text = re.sub(r"\\underset\s*\{([^{}]*)\}\s*\{([^{}]*)\}", r"\2_\1", text)
+    text = re.sub(r"\\(?:overbrace|underbrace)\s*\{([^{}]*)\}", r"\1", text)
+    accent_replacements = {
+        "hat": "^",
+        "widehat": "^",
+        "bar": "¯",
+        "tilde": "~",
+        "widetilde": "~",
+        "vec": "→",
+        "dot": "·",
+        "ddot": "··",
+    }
+    for command, mark in accent_replacements.items():
+        text = re.sub(rf"\\{command}\s*\{{([^{{}}]+)\}}", rf"{mark}\1", text)
     text = re.sub(
         r"\\genfrac\s*\{((?:\\[{}]|[^{}])*)\}\s*\{((?:\\[{}]|[^{}])*)\}\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{([^{}]*)\}\s*\{([^{}]*)\}",
         lambda match: (
@@ -228,12 +244,12 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\check\s*\{([^{}]+)\}", r"ˇ\1", text)
     text = re.sub(r"\\mathring\s*\{([^{}]+)\}", r"˚\1", text)
     text = re.sub(r"\\buildrel\s+(.+?)\s+\\over\s+(\\[A-Za-z]+|[^\s+]+)", r"\2^\1", text)
-    text = re.sub(r"\\stackrel\s*\{([^{}]*)\}\s*\{([^{}]+)\}", r"\2^\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = text.replace("&", " ")
     text = text.replace("\\\\", " ")
+    text = re.sub(r"\\(?:hspace|vspace)\s*\{[^{}]*\}", " ", text)
     text = re.sub(
-        r"\\(?:left|right|middle|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)(?![A-Za-z])",
+        r"\\(?:left|right|middle|limits|nolimits|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)(?![A-Za-z])",
         "",
         text,
     )
@@ -251,6 +267,7 @@ def plainify_latex_text(text: str) -> str:
         "ne": "≠",
         "approx": "≈",
         "sim": "∼",
+        "iff": "↔",
         "nsim": "≁",
         "ncong": "≇",
         "napprox": "≉",
@@ -272,6 +289,21 @@ def plainify_latex_text(text: str) -> str:
         "lVert": "‖",
         "rVert": "‖",
         "Vert": "‖",
+        "vert": "|",
+        "lvert": "|",
+        "rvert": "|",
+        "lbrace": "{",
+        "rbrace": "}",
+        "lparen": "(",
+        "rparen": ")",
+        "lbrack": "[",
+        "rbrack": "]",
+        "langle": "〈",
+        "rangle": "〉",
+        "lceil": "⌈",
+        "rceil": "⌉",
+        "lfloor": "⌊",
+        "rfloor": "⌋",
         "perp": "⊥",
         "parallel": "∥",
         "angle": "∠",
@@ -363,6 +395,8 @@ def plainify_latex_text(text: str) -> str:
         "smallsetminus": "∖",
         "diagup": "⟋",
         "diagdown": "⟍",
+        "uparrow": "↑",
+        "downarrow": "↓",
         "bigcup": "⋃",
         "bigcap": "⋂",
         "bigsqcup": "⨆",
@@ -388,6 +422,10 @@ def plainify_latex_text(text: str) -> str:
         "cdotp": "·",
         "bullet": "•",
         "diamond": "⋄",
+        "circ": "∘",
+        "star": "⋆",
+        "degree": "°",
+        "prime": "′",
         "bigstar": "★",
         "bigcirc": "○",
         "lozenge": "◊",
@@ -400,6 +438,7 @@ def plainify_latex_text(text: str) -> str:
         "triangleleft": "◁",
         "triangleright": "▷",
         "bmod": "mod",
+        "mod": "mod",
         "limsup": "lim sup",
         "liminf": "lim inf",
         "injlim": "inj lim",
@@ -438,6 +477,15 @@ def plainify_latex_text(text: str) -> str:
         "negmedspace": " ",
         "negthickspace": " ",
         "ln": "ln",
+        "min": "min",
+        "max": "max",
+        "sup": "sup",
+        "inf": "inf",
+        "arg": "arg",
+        "det": "det",
+        "dim": "dim",
+        "ker": "ker",
+        "gcd": "gcd",
         "exp": "exp",
         "arcsin": "arcsin",
         "arccos": "arccos",
@@ -467,16 +515,25 @@ def plainify_latex_text(text: str) -> str:
     )
     text = re.sub(
         r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\above(?![A-Za-z])\s+\S+\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
-        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}"
+        if re.search(r"\\above(?![A-Za-z])\s+0", match.group(0))
+        else f"({match.group(1).strip()})/({match.group(2).strip()})",
         text,
     )
     text = re.sub(
         r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\abovewithdelims(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\S+\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
-        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}"
+        if re.search(r"\\abovewithdelims(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*0", match.group(0))
+        else f"({match.group(1).strip()})/({match.group(2).strip()})",
         text,
     )
     text = re.sub(
-        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\(?:overwithdelims|atopwithdelims)(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\overwithdelims(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"({match.group(1).strip()})/({match.group(2).strip()})",
+        text,
+    )
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\atopwithdelims(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
         lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
         text,
     )

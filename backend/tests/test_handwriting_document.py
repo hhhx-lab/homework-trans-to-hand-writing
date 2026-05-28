@@ -45,6 +45,22 @@ class HandwritingDocumentTests(unittest.TestCase):
         self.assertIn("$x^2+1$", markdown)
         self.assertIn("$$", markdown)
 
+    def test_normalize_markdown_wraps_bare_presentation_math(self):
+        markdown, info = normalize_markdown(
+            r"题目 \binom{n}{k}，再看 \overset{a}{b} 和 \vec{x}+\dot{y}+\ddot{z}，"
+            r"以及 a \over b、x\iff y、\lceil x\rceil。"
+        )
+        self.assertEqual(info["removed_images"], 0)
+        for formula in (
+            r"$\binom{n}{k}$",
+            r"$\overset{a}{b}$",
+            r"$\vec{x}+\dot{y}+\ddot{z}$",
+            r"$\frac{a}{b}$",
+            r"$x\iff y$",
+            r"$\lceil x\rceil$",
+        ):
+            self.assertIn(formula, markdown)
+
     def test_plainify_latex_text_handles_broad_relation_commands(self):
         text = plainify_latex_text(
             r"a\equiv b\pmod{n}, x\perp y, l\parallel m, "
@@ -179,6 +195,16 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("¬", "p", "⇒", "q", "≺", "↪", "mod", "n", "xy", "text"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_bare_presentation_commands(self):
+        text = plainify_latex_text(
+            r"\binom{n}{k}+\overset{a}{b}+\underset{0}{\lim}+"
+            r"\vec{x}+\dot{y}+\ddot{z}+\overbrace{a+b}^{n}+"
+            r"x\iff y+a\circ b+\lceil x\rceil+a\uparrow b"
+        )
+        self.assertNotRegex(text, r"\\|binom|overset|underset|vec|dot|ddot|overbrace|iff|circ|lceil|rceil|uparrow")
+        for token in ("C(n,k)", "b^a", "lim_0", "→x", "·y", "··z", "a+b", "n", "↔", "∘", "⌈", "⌉", "↑"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"
@@ -229,7 +255,12 @@ class HandwritingDocumentTests(unittest.TestCase):
                 "$$\n"
                 "\\frac{d x}{d t}=x^2+1\n"
                 "$$\n\n"
-                "因此答案为 $x=\\tan(t+C)$.\n",
+                "因此答案为 $x=\\tan(t+C)$.\n"
+                "另有裸公式 \\binom{n}{k}, \\overset{a}{b}, \\vec{x}+\\dot{y}+\\ddot{z}, "
+                "a \\over b, x\\iff y, \\lceil x\\rceil.\n"
+                "保内容公式 \\textcolor{red}{x+y}, \\fbox{c+d}, "
+                "\\boldmath{y}, \\cal{F}, \\textnormal{abc}, \\eqref{eq:a}, "
+                "\\begin{array}{c|c}\\hline a&b\\\\\\cline{1-2}c&d\\end{array}.\n",
                 encoding="utf-8",
             )
             report = convert_to_handwritten(source, tmp_dir / "out", output_stem="sample_handwritten")

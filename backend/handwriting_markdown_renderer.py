@@ -481,6 +481,19 @@ FALLBACK_FONT_PATHS = [
 ]
 
 
+def _jitter_guard(sigma: float | int | None) -> int:
+    sigma = abs(float(sigma or 0))
+    return math.ceil(sigma * 3) if sigma else 0
+
+
+def _bounded_gauss(rand: random.Random, sigma: float | int | None) -> int:
+    sigma = abs(float(sigma or 0))
+    if not sigma:
+        return 0
+    guard = _jitter_guard(sigma)
+    return max(-guard, min(guard, round(rand.gauss(0, sigma))))
+
+
 def _font_supports_text(font: ImageFont.FreeTypeFont, text: str) -> bool:
     for ch in text:
         if ch.isspace():
@@ -562,8 +575,8 @@ class DrawContext:
 
     def jitter(self) -> tuple[int, int]:
         return (
-            round(self.rand.gauss(0, self.config.perturb_x_sigma)) if self.config.perturb_x_sigma else 0,
-            round(self.rand.gauss(0, self.config.perturb_y_sigma)) if self.config.perturb_y_sigma else 0,
+            _bounded_gauss(self.rand, self.config.perturb_x_sigma),
+            _bounded_gauss(self.rand, self.config.perturb_y_sigma),
         )
 
     @contextmanager
@@ -1909,9 +1922,12 @@ def render_markdown_handwriting(
     markdown = normalize_math_markdown(markdown)
     fonts = FontCache(font)
     rand = random.Random(config.seed)
-    available_width = background.width - config.left_margin - config.right_margin
-    max_y = background.height - config.bottom_margin
-    max_line_height = max(1, max_y - config.top_margin)
+    x_guard = _jitter_guard(config.perturb_x_sigma)
+    y_guard = _jitter_guard(config.perturb_y_sigma)
+    available_width = max(1, background.width - config.left_margin - config.right_margin - x_guard * 2)
+    max_y = background.height - config.bottom_margin - y_guard
+    min_y = config.top_margin + y_guard
+    max_line_height = max(1, max_y - min_y)
     min_formula_size = max(16, min(24, int(config.font_size)))
     pages: list[Image.Image] = []
     page = background.copy()
@@ -1932,11 +1948,11 @@ def render_markdown_handwriting(
         nonlocal baseline_y
         step_count = max(1, math.ceil((line.height + extra_gap) / max(1, config.line_spacing)))
         line_height = step_count * config.line_spacing
-        y = max(config.top_margin, baseline_y - line.baseline)
+        y = max(min_y, baseline_y - line.baseline)
         if y + line.height > max_y and baseline_y > first_line_y:
             new_page()
-            y = max(config.top_margin, baseline_y - line.baseline)
-        x = config.left_margin + ((available_width - line.width) // 2 if center and line.width < available_width else 0)
+            y = max(min_y, baseline_y - line.baseline)
+        x = config.left_margin + x_guard + ((available_width - line.width) // 2 if center and line.width < available_width else 0)
         line.draw(ctx, x, y)
         baseline_y += line_height
 
