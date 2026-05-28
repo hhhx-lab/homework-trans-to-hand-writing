@@ -1741,6 +1741,7 @@ INLINE_MATH_RE = re.compile(r"\$([^$\n]+)\$")
 RAW_LATEX_COMMAND_RE = re.compile(r"\\(?:[A-Za-z]+|[{}_^~'`\"|])")
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 LATEX_CONTEXT_CHARS = set("\\{}[]()_^+-=*/<>.,;:|~'\"!&")
+MARKDOWN_ESCAPED_TEXT_RE = re.compile(r"\\([&%#_$*+\-=<>.!?,:;()[\]{}|~`])")
 
 
 def _is_likely_path_escape(text: str, start: int) -> bool:
@@ -1898,16 +1899,20 @@ def _display_math_lines(expr: str, available_width: int, fonts: FontCache, size:
     return lines
 
 
+def _unescape_markdown_text(text: str) -> str:
+    return MARKDOWN_ESCAPED_TEXT_RE.sub(r"\1", text)
+
+
 def _text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
     boxes: list[Box] = []
     pos = 0
     for match in INLINE_MATH_RE.finditer(text):
         if match.start() > pos:
-            boxes.extend(_plain_text_to_boxes(text[pos:match.start()], fonts, size))
+            boxes.extend(_plain_text_to_boxes(_unescape_markdown_text(text[pos:match.start()]), fonts, size))
         boxes.append(latex_to_box(match.group(1), fonts, size))
         pos = match.end()
     if pos < len(text):
-        boxes.extend(_plain_text_to_boxes(text[pos:], fonts, size))
+        boxes.extend(_plain_text_to_boxes(_unescape_markdown_text(text[pos:]), fonts, size))
     return boxes
 
 

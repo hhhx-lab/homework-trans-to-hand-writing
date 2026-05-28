@@ -235,6 +235,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in (r"C:\Users\alice", r"a\b", "(1)/(2)"):
             self.assertIn(token, debug_text)
 
+    def test_markdown_renderer_unescapes_plain_text_punctuation_without_dropping_paths(self):
+        markdown = r"普通 A\&B，百分号 \%，编号 \#1，下划线 x\_1，路径 C:\Users\alice 保留。"
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("A&B", "%", "#1", "x_1", r"C:\Users\alice"):
+            self.assertIn(token, compact_text)
+        self.assertNotIn(r"A\&B", debug_text)
+        self.assertNotIn(r"\%", debug_text)
+        self.assertNotIn(r"\#1", debug_text)
+
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
         self.assertIn("¯x", debug_text)
