@@ -80,6 +80,14 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("ϖ", "ς", "ϱ", "⋃", "↼", "≦", "•", "arcsin", "x"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_common_ams_symbols(self):
+        text = plainify_latex_text(
+            r"a\nleq b+A\nsubseteq B+A\boxtimes B+\beth+\Game+\mho+a\VDash b+a\nvdash b"
+        )
+        self.assertNotRegex(text, r"\\|nleq|nsubseteq|boxtimes|beth|Game|mho|VDash|nvdash")
+        for token in ("≰", "⊈", "⊠", "ℶ", "⅁", "℧", "⊫", "⊬", "a", "b", "A", "B"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_structural_helper_content(self):
         text = plainify_latex_text(
             r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+\mathrel{R}+"

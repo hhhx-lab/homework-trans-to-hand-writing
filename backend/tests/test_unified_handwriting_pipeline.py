@@ -276,6 +276,22 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("ϖ", "ς", "ϱ", "↼", "⇌", "≦", "⪅", "⋃", "•", "□", "arcsin", "x", "y"):
             self.assertIn(token, debug_text)
 
+    def test_common_ams_symbols_render_readably_without_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"a\nleq b+a\ngeq b+a\nless b+a\ngtr b+a\lneq b+a\gneq b+"
+            r"A\nsubseteq B+A\nsupseteq B+A\Subset B+A\Supset B+"
+            r"A\boxtimes B+A\boxplus B+A\ltimes B+A\rightthreetimes B+"
+            r"\beth+\Game+\mho+\backprime+a\VDash b+a\nvdash b+a\nVDash b",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|nleq|ngeq|nless|ngtr|lneq|gneq|nsubseteq|nsupseteq|Subset|Supset|"
+            r"boxtimes|boxplus|ltimes|rightthreetimes|beth|Game|mho|backprime|VDash|nvdash|nVDash",
+        )
+        for token in ("≰", "≱", "≮", "≯", "⪇", "⪈", "⊈", "⊉", "⋐", "⋑", "⊠", "⊞", "⋉", "⋌", "ℶ", "⅁", "℧", "‵", "⊫", "⊬", "⊯"):
+            self.assertIn(token, debug_text)
+
     def test_structural_latex_helpers_preserve_content_without_command_names(self):
         debug_text = latex_to_debug_text(
             r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+"
@@ -394,6 +410,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|bigcup|leqq|varpi|varsigma")
         for token in ("题目", "A", "⋃", "B", "且", "≦", "另有", "ϖ", "ς"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_ams_symbol_commands_are_wrapped_and_rendered(self):
+        markdown = r"题目 a\nleq b 且 A\nsubseteq B，另有 \beth+\Game。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$a\nleq b$", normalized)
+        self.assertIn(r"$A\nsubseteq B$", normalized)
+        self.assertIn(r"$\beth+\Game$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|nleq|nsubseteq|beth|Game")
+        for token in ("题目", "≰", "且", "⊈", "另有", "ℶ", "⅁"):
             self.assertIn(token, debug_text)
 
     def test_bare_structural_helpers_are_wrapped_and_rendered(self):

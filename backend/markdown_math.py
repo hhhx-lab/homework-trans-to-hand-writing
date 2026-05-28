@@ -76,6 +76,8 @@ LATEX_COMMAND_NAMES = (
     "scriptstyle",
     "therefore",
     "smallsetminus",
+    "rightthreetimes",
+    "leftthreetimes",
     "blacksquare",
     "nonumber",
     "substack",
@@ -84,8 +86,12 @@ LATEX_COMMAND_NAMES = (
     "because",
     "partial",
     "setminus",
+    "nsubseteq",
+    "nsupseteq",
     "subseteq",
     "supseteq",
+    "subsetneq",
+    "supsetneq",
     "emptyset",
     "lVert",
     "rVert",
@@ -127,6 +133,14 @@ LATEX_COMMAND_NAMES = (
     "textsf",
     "textbf",
     "aleph",
+    "backprime",
+    "daleth",
+    "gimel",
+    "beth",
+    "Game",
+    "Finv",
+    "mho",
+    "eth",
     "atop",
     "overwithdelims",
     "atopwithdelims",
@@ -153,6 +167,14 @@ LATEX_COMMAND_NAMES = (
     "bmod",
     "preceq",
     "succeq",
+    "nless",
+    "ngtr",
+    "nleq",
+    "ngeq",
+    "lneq",
+    "gneq",
+    "lnsim",
+    "gnsim",
     "leqq",
     "geqq",
     "lessgtr",
@@ -161,8 +183,13 @@ LATEX_COMMAND_NAMES = (
     "vdash",
     "dashv",
     "vDash",
+    "VDash",
     "Vdash",
     "Vvdash",
+    "nvdash",
+    "nvDash",
+    "nVdash",
+    "nVDash",
     "smile",
     "frown",
     "bowtie",
@@ -173,6 +200,16 @@ LATEX_COMMAND_NAMES = (
     "bigwedge",
     "bigoplus",
     "bigotimes",
+    "boxtimes",
+    "boxminus",
+    "boxplus",
+    "boxdot",
+    "Subset",
+    "Supset",
+    "sqsubseteq",
+    "sqsupseteq",
+    "sqsubset",
+    "sqsupset",
     "limsup",
     "liminf",
     "injlim",
@@ -297,6 +334,8 @@ LATEX_COMMAND_NAMES = (
     "uplus",
     "wr",
     "amalg",
+    "ltimes",
+    "rtimes",
     "neq",
     "neg",
     "lnot",
@@ -353,10 +392,14 @@ DISPLAY_COMMAND_RE = LATEX_NAMED_COMMAND_RE
 MATH_RELATION_RE = re.compile(
     r"[=<>≤≥≠≈≡∈∉⊥∥→←⇒⇐↔⇔⊂⊆⊃⊇∝]|"
     r"\\(?:leqslant|geqslant|leq|geq|le|ge|neq|ne|approx|sim|cong|simeq|equiv|"
-    r"pmod|bmod|pod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
-    r"prec|preceq|succ|succeq|leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|"
-    r"lessgtr|gtrless|ll|gg|asymp|doteq|models|vdash|dashv|vDash|Vdash|Vvdash|"
-    r"smallsetminus|sqcup|sqcap|uplus|wr|amalg|bigcup|bigcap|bigsqcup|bigvee|bigwedge|bigoplus|bigotimes|"
+    r"pmod|bmod|pod|perp|parallel|in|notin|ni|subset|subseteq|nsubseteq|subsetneq|"
+    r"supset|supseteq|nsupseteq|supsetneq|Subset|Supset|sqsubset|sqsupset|sqsubseteq|sqsupseteq|propto|"
+    r"prec|preceq|succ|succeq|nleq|ngeq|nless|ngtr|lneq|gneq|lnsim|gnsim|"
+    r"leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|"
+    r"lessgtr|gtrless|ll|gg|asymp|doteq|models|vdash|dashv|vDash|Vdash|VDash|Vvdash|"
+    r"nvdash|nvDash|nVdash|nVDash|"
+    r"smallsetminus|sqcup|sqcap|uplus|wr|amalg|boxtimes|boxplus|boxminus|boxdot|ltimes|rtimes|leftthreetimes|rightthreetimes|"
+    r"bigcup|bigcap|bigsqcup|bigvee|bigwedge|bigoplus|bigotimes|"
     r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|"
     r"leftharpoonup|leftharpoondown|rightharpoonup|rightharpoondown|leftrightharpoons|rightleftharpoons|nearrow|searrow|nwarrow|swarrow|"
     r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|longrightarrow|longleftarrow|longleftrightarrow|"
@@ -366,6 +409,7 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
     r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"beth|gimel|daleth|mho|Game|Finv|backprime|eth|"
     r"stackrel|buildrel|genfrac|overwithdelims|atopwithdelims|abovewithdelims|"
     r"mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
     r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
