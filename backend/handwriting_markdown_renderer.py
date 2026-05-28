@@ -22,19 +22,36 @@ GREEK = {
     "delta": "δ",
     "epsilon": "ε",
     "varepsilon": "ε",
+    "zeta": "ζ",
+    "eta": "η",
     "theta": "θ",
     "vartheta": "ϑ",
+    "iota": "ι",
+    "kappa": "κ",
     "lambda": "λ",
     "mu": "μ",
+    "nu": "ν",
+    "xi": "ξ",
     "pi": "π",
+    "rho": "ρ",
     "sigma": "σ",
+    "tau": "τ",
+    "upsilon": "υ",
     "varphi": "φ",
     "phi": "φ",
+    "chi": "χ",
+    "psi": "ψ",
     "omega": "ω",
+    "Gamma": "Γ",
     "Omega": "Ω",
+    "Theta": "Θ",
     "Lambda": "Λ",
+    "Xi": "Ξ",
+    "Pi": "Π",
     "Delta": "Δ",
     "Sigma": "Σ",
+    "Phi": "Φ",
+    "Psi": "Ψ",
 }
 
 SYMBOLS = {
@@ -61,12 +78,22 @@ SYMBOLS = {
     "rightarrow": "→",
     "leftarrow": "←",
     "Rightarrow": "⇒",
+    "Leftarrow": "⇐",
+    "leftrightarrow": "↔",
+    "Leftrightarrow": "⇔",
+    "iff": "↔",
+    "mapsto": "↦",
+    "gets": "←",
+    "uparrow": "↑",
+    "downarrow": "↓",
     "cap": "∩",
     "cup": "∪",
+    "setminus": "∖",
     "subset": "⊂",
     "subseteq": "⊆",
     "supset": "⊃",
     "supseteq": "⊇",
+    "varnothing": "∅",
     "emptyset": "∅",
     "partial": "∂",
     "nabla": "∇",
@@ -80,10 +107,21 @@ SYMBOLS = {
     "rvert": "|",
     "langle": "〈",
     "rangle": "〉",
+    "lceil": "⌈",
+    "rceil": "⌉",
+    "lfloor": "⌊",
+    "rfloor": "⌋",
     "wedge": "∧",
     "land": "∧",
     "vee": "∨",
     "lor": "∨",
+    "oplus": "⊕",
+    "otimes": "⊗",
+    "circ": "∘",
+    "star": "⋆",
+    "propto": "∝",
+    "degree": "°",
+    "prime": "′",
     "Pr": "P",
     "ln": "ln",
     "exp": "exp",
@@ -93,8 +131,8 @@ SYMBOLS = {
     "log": "log",
 }
 
-BIG_OPERATORS = {"sum": "∑", "int": "∫", "prod": "∏", "lim": "lim"}
-MATRIX_ENVS = {"matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned"}
+BIG_OPERATORS = {"sum": "∑", "int": "∫", "iint": "∬", "iiint": "∭", "prod": "∏", "lim": "lim"}
+MATRIX_ENVS = {"matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned", "array"}
 STYLE_COMMANDS = {"displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "limits", "nolimits"}
 GROUP_WRAPPERS = {
     "mathrm",
@@ -108,8 +146,10 @@ GROUP_WRAPPERS = {
     "overline",
     "underline",
     "hat",
+    "widehat",
     "bar",
     "tilde",
+    "widetilde",
 }
 SIZE_DELIMITERS = {"big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr"}
 LATEX_RESIDUAL_RE = re.compile(
@@ -121,12 +161,55 @@ COMMAND_FALLBACKS = {
     "overline": "¯",
     "underline": "_",
     "hat": "^",
+    "widehat": "^",
     "bar": "¯",
     "tilde": "~",
+    "widetilde": "~",
     "vec": "→",
+    "overrightarrow": "→",
     "dot": "·",
     "ddot": "··",
 }
+DELIMITER_COMMANDS = {
+    "{": "{",
+    "}": "}",
+    "lbrace": "{",
+    "rbrace": "}",
+    "lparen": "(",
+    "rparen": ")",
+    "lbrack": "[",
+    "rbrack": "]",
+    "langle": "〈",
+    "rangle": "〉",
+    "vert": "|",
+    "|": "‖",
+    ".": "",
+}
+FALLBACK_FONT_PATHS = [
+    Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+    Path("/System/Library/Fonts/Supplemental/STIXGeneral.otf"),
+    Path("/System/Library/Fonts/Supplemental/STIXTwoMath.otf"),
+    Path("/System/Library/Fonts/Supplemental/Songti.ttc"),
+    Path("/System/Library/Fonts/Symbol.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuMathTeXGyre.ttf"),
+    Path("/usr/share/fonts/opentype/stix/STIXGeneral.otf"),
+    Path("/usr/share/fonts/opentype/stix-word/STIX-Regular.otf"),
+    Path("/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf"),
+]
+
+
+def _font_supports_text(font: ImageFont.FreeTypeFont, text: str) -> bool:
+    for ch in text:
+        if ch.isspace():
+            continue
+        try:
+            if font.getmask(ch).getbbox() is None:
+                return False
+        except Exception:
+            return False
+    return True
 
 
 @dataclass
@@ -153,12 +236,27 @@ class FontCache:
     def __init__(self, base_font):
         self.base_font = base_font
         self._cache: dict[int, ImageFont.FreeTypeFont] = {}
+        self._fallback_cache: dict[tuple[Path, int], ImageFont.FreeTypeFont] = {}
+        self._fallback_paths = [path for path in FALLBACK_FONT_PATHS if path.exists()]
 
     def get(self, size: int):
         size = max(8, int(size))
         if size not in self._cache:
             self._cache[size] = self.base_font.font_variant(size=size)
         return self._cache[size]
+
+    def get_for_text(self, text: str, size: int):
+        font = self.get(size)
+        if _font_supports_text(font, text):
+            return font
+        for path in self._fallback_paths:
+            key = (path, max(8, int(size)))
+            if key not in self._fallback_cache:
+                self._fallback_cache[key] = ImageFont.truetype(str(path), size=key[1])
+            fallback = self._fallback_cache[key]
+            if _font_supports_text(fallback, text):
+                return fallback
+        return font
 
 
 class DrawContext:
@@ -239,7 +337,7 @@ class TextBox(Box):
     def __init__(self, text: str, fonts: FontCache, size: int):
         self.text = text
         self.size = size
-        self.font = fonts.get(size)
+        self.font = fonts.get_for_text(text or " ", size)
         left, top, right, bottom = self.font.getbbox(text or " ")
         self.width = max(1, right - left)
         ascent, descent = self.font.getmetrics()
@@ -251,7 +349,7 @@ class TextBox(Box):
         actual_size = self.size
         if ctx.config.font_size_sigma:
             actual_size = max(8, round(ctx.rand.gauss(self.size, ctx.config.font_size_sigma)))
-        font = ctx.fonts.get(actual_size)
+        font = ctx.fonts.get_for_text(self.text or " ", actual_size)
         angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
         if self.text.strip() and angle_sigma and ctx.depth > 0:
             bbox = font.getbbox(self.text)
@@ -318,6 +416,22 @@ class FractionBox(Box):
 
     def debug_text(self) -> str:
         return f"({self.numerator.debug_text()})/({self.denominator.debug_text()})"
+
+
+class BinomialBox(Box):
+    def __init__(self, upper: Box, lower: Box, size: int, fonts: FontCache):
+        self.upper = upper
+        self.lower = lower
+        self.matrix = MatrixBox([[upper], [lower]], "pmatrix", size, fonts)
+        self.width = self.matrix.width
+        self.height = self.matrix.height
+        self.baseline = self.matrix.baseline
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        self.matrix.draw(ctx, x, y)
+
+    def debug_text(self) -> str:
+        return f"C({self.upper.debug_text()},{self.lower.debug_text()})"
 
 
 class SqrtBox(Box):
@@ -658,17 +772,39 @@ class LatexParser:
         content = self._read_group_text()
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 
+    def _read_delimiter(self) -> str:
+        self._skip_space()
+        if self.pos >= len(self.text):
+            return ""
+        if self.text[self.pos] == "\\":
+            name = self._read_command_name()
+            return DELIMITER_COMMANDS.get(name, SYMBOLS.get(name, name))
+        delimiter = self.text[self.pos]
+        self.pos += 1
+        return "" if delimiter == "." else delimiter
+
+    def _parse_unknown_command(self, name: str) -> Box:
+        args: list[Box] = []
+        while len(args) < 3:
+            self._skip_space()
+            if self.pos >= len(self.text) or self.text[self.pos] != "{":
+                break
+            args.append(self._parse_group(0.88))
+        if not args:
+            return TextBox(name, self.fonts, self.size)
+        children: list[Box] = [TextBox(name, self.fonts, max(8, int(self.size * 0.86))), TextBox("(", self.fonts, self.size)]
+        for index, arg in enumerate(args):
+            if index:
+                children.append(TextBox(",", self.fonts, self.size))
+            children.append(arg)
+        children.append(TextBox(")", self.fonts, self.size))
+        return HBox(children, gap=max(0, self.size // 24))
+
     def _parse_command(self) -> Box:
         name = self._read_command_name()
         if name in {"left", "right"}:
-            self._skip_space()
-            if self.pos < len(self.text):
-                delimiter = self.text[self.pos]
-                self.pos += 1
-                if delimiter == ".":
-                    return TextBox("", self.fonts, self.size)
-                return TextBox(delimiter, self.fonts, int(self.size * 1.05))
-            return TextBox("", self.fonts, self.size)
+            delimiter = self._read_delimiter()
+            return TextBox(delimiter, self.fonts, int(self.size * 1.05)) if delimiter else TextBox("", self.fonts, self.size)
         if name in STYLE_COMMANDS:
             return TextBox("", self.fonts, self.size)
         if name in SIZE_DELIMITERS:
@@ -677,13 +813,31 @@ class LatexParser:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in GROUP_WRAPPERS:
             return self._parse_group()
-        if name == "frac":
+        if name in {"frac", "dfrac", "tfrac", "cfrac"}:
             numerator = self._parse_group(0.8)
             denominator = self._parse_group(0.8)
             return FractionBox(numerator, denominator, max(5, self.size // 10))
+        if name in {"binom", "dbinom", "tbinom"}:
+            upper = self._parse_group(0.78)
+            lower = self._parse_group(0.78)
+            return BinomialBox(upper, lower, self.size, self.fonts)
         if name == "sqrt":
             self._skip_optional()
             return SqrtBox(self._parse_group(0.9), self.size, self.fonts)
+        if name == "overset":
+            over = self._parse_group(0.62)
+            base = self._parse_group(0.92)
+            return ScriptBox(base, over, None, limits=True)
+        if name == "underset":
+            under = self._parse_group(0.62)
+            base = self._parse_group(0.92)
+            return ScriptBox(base, None, under, limits=True)
+        if name == "overbrace":
+            child = self._parse_group(0.9)
+            return ScriptBox(child, TextBox("⏞", self.fonts, max(8, int(self.size * 0.7))), None, limits=True)
+        if name == "underbrace":
+            child = self._parse_group(0.9)
+            return ScriptBox(child, None, TextBox("⏟", self.fonts, max(8, int(self.size * 0.7))), limits=True)
         if name == "begin":
             env = self._read_group_text().strip()
             return self._parse_environment(env)
@@ -697,7 +851,7 @@ class LatexParser:
             return TextBox(" ", self.fonts, self.size // 2)
         if name in {"{", "}", "_", "%", "#", "&"}:
             return TextBox(name, self.fonts, self.size)
-        return TextBox("\\" + name + self._read_raw_command_arguments(), self.fonts, self.size)
+        return self._parse_unknown_command(name)
 
     def _parse_environment(self, env: str) -> Box:
         end_marker = f"\\end{{{env}}}"
@@ -706,6 +860,8 @@ class LatexParser:
             return TextBox(env, self.fonts, self.size)
         content = self.text[self.pos:end]
         self.pos = end + len(end_marker)
+        if env == "array":
+            content = re.sub(r"^\s*\{[^{}]*\}", "", content, count=1)
         if env not in MATRIX_ENVS:
             return LatexParser(content, self.fonts, self.size).parse()
         rows = []
@@ -942,24 +1098,28 @@ def render_markdown_handwriting(
     page = background.copy()
     draw = ImageDraw.Draw(page)
     ctx = DrawContext(page, draw, fonts, config, rand)
-    y = config.top_margin
+    first_line_y = config.top_margin + config.line_spacing
+    baseline_y = first_line_y
 
     def new_page() -> None:
-        nonlocal page, draw, ctx, y
+        nonlocal page, draw, ctx, baseline_y
         pages.append(page)
         page = background.copy()
         draw = ImageDraw.Draw(page)
         ctx = DrawContext(page, draw, fonts, config, rand)
-        y = config.top_margin
+        baseline_y = first_line_y
 
     def draw_line(line: Box, extra_gap: int = 0, center: bool = False) -> None:
-        nonlocal y
-        line_height = max(config.line_spacing, line.height + extra_gap)
-        if y + line_height > max_y and y > config.top_margin:
+        nonlocal baseline_y
+        step_count = max(1, math.ceil((line.height + extra_gap) / max(1, config.line_spacing)))
+        line_height = step_count * config.line_spacing
+        y = max(config.top_margin, baseline_y - line.baseline)
+        if y + line.height > max_y and baseline_y > first_line_y:
             new_page()
+            y = max(config.top_margin, baseline_y - line.baseline)
         x = config.left_margin + ((available_width - line.width) // 2 if center and line.width < available_width else 0)
         line.draw(ctx, x, y)
-        y += line_height
+        baseline_y += line_height
 
     for index, (kind, content) in enumerate(_blocks(markdown), start=1):
         if progress_hook:
@@ -975,7 +1135,6 @@ def render_markdown_handwriting(
             continue
         for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing):
             draw_line(line)
-        y += max(4, config.line_spacing // 5)
 
     pages.append(page)
     return pages

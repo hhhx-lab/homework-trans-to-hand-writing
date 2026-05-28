@@ -585,6 +585,22 @@ def normalize_output_format(data: dict[str, Any]) -> str:
     return output_format
 
 
+MATH_LIKE_CONTENT_RE = re.compile(
+    r"(?<!\\)\$|\\\(|\\\[|"
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|sum|prod|int|iint|iiint|lim|binom|"
+    r"overset|underset|begin|left|right|operatorname|mathrm|mathbf|mathbb|"
+    r"text|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|"
+    r"leq|geq|neq|approx|infty|cdot|times|iff|mapsto)\b|"
+    r"[_^]\s*(?:\{|[A-Za-z0-9])"
+)
+
+
+def should_render_with_markdown_renderer(content_format: str, text: str) -> bool:
+    if (content_format or "").lower() == "markdown":
+        return True
+    return bool(MATH_LIKE_CONTENT_RE.search(text or ""))
+
+
 async def build_image_result_response(
     images,
     *,
@@ -903,7 +919,7 @@ async def generate_handwriting_impl(
     is_preview = data["preview"] == "true"
     full_preview = data.get("full_preview", "true") if is_preview else "false"
 
-    if content_format == "markdown":
+    if should_render_with_markdown_renderer(content_format, text_to_generate):
         report_progress("rendering", "正在生成手写Markdown", 45)
         text_to_generate = normalize_math_markdown(text_to_generate)
         config = HandwritingRenderConfig(

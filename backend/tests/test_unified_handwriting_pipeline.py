@@ -9,14 +9,16 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from PIL import Image, ImageChops, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 from docx import Document
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mineru_adapter
 from handwriting_markdown_renderer import (
+    FontCache,
     HandwritingRenderConfig,
+    TextBox,
     latex_to_debug_text,
     markdown_render_debug_text,
     render_markdown_handwriting,
@@ -75,16 +77,88 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("[图片:<img src=\"b.png\" alt=\"图2\">]", debug_text)
         self.assertIn("x^2+1", debug_text)
 
-    def test_unknown_latex_commands_remain_visible_in_debug_text(self):
+    def test_unknown_latex_commands_remain_visible_without_raw_latex(self):
         debug_text = latex_to_debug_text(r"\unknowncmd{x}+\overset{a}{b}", FONT_PATH)
-        self.assertIn(r"\unknowncmd{x}", debug_text)
-        self.assertIn(r"\overset{a}{b}", debug_text)
+        self.assertNotIn("\\", debug_text)
+        self.assertIn("unknowncmd", debug_text)
+        self.assertIn("x", debug_text)
+        self.assertIn("a", debug_text)
+        self.assertIn("b", debug_text)
 
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
         self.assertIn("¯x", debug_text)
         self.assertIn("^y", debug_text)
         self.assertIn("→z", debug_text)
+
+    def test_common_latex_commands_render_readably_without_raw_latex(self):
+        expr = (
+            r"\dfrac{a_1}{b^2}+\binom{n}{k}+\overset{a}{b}+"
+            r"\underset{0}{\lim}+\operatorname{Var}(X)+\mathbb{R}+"
+            r"\iff+\mapsto+\left\{x\mid x\geq0\right\}"
+        )
+        debug_text = latex_to_debug_text(expr, FONT_PATH)
+        self.assertNotIn("\\", debug_text)
+        for macro in ("dfrac", "binom", "overset", "underset", "iff", "mapsto", "left", "right"):
+            self.assertNotIn(macro, debug_text)
+        for token in ("a", "1", "b", "2", "n", "k", "0", "lim", "Var", "X", "R", "x"):
+            self.assertIn(token, debug_text)
+        self.assertIn("↔", debug_text)
+        self.assertIn("↦", debug_text)
+
+    def test_markdown_debug_text_preserves_body_and_formula_tokens(self):
+        markdown = (
+            r"第12题：已知 A_n=3，求 $P(X_n=i)=\dfrac{a_1}{b^2}$ 的值。"
+            "\n\n$$\n"
+            r"f(x)=\begin{cases}x^2+1,&x\geq0\\-x,&x<0\end{cases}"
+            "\n$$\n"
+            "最后一行 z_9 不可丢。"
+        )
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotIn("\\", debug_text)
+        for token in ("第12题", "已知", "A", "n", "3", "P", "X", "i", "a", "1", "b", "2", "f", "x", "0", "最后一行", "z", "9"):
+            self.assertIn(token, debug_text)
+
+    def test_plain_requests_with_math_use_markdown_renderer(self):
+        from app import should_render_with_markdown_renderer
+
+        self.assertTrue(should_render_with_markdown_renderer("plain", r"题目 \dfrac{a}{b}"))
+        self.assertTrue(should_render_with_markdown_renderer("plain", r"题目 $x+1$"))
+        self.assertFalse(should_render_with_markdown_renderer("plain", "纯文本内容"))
+
+    def test_renderer_places_text_on_first_ruled_line_band(self):
+        background = Image.new("RGB", (900, 1100), "white")
+        top_margin = 70
+        line_spacing = 96
+        left_margin = 70
+        right_margin = 70
+        draw = ImageDraw.Draw(background)
+        first_rule_y = top_margin + line_spacing
+        draw.line((left_margin, first_rule_y, background.width - right_margin, first_rule_y), fill="black")
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        config = HandwritingRenderConfig(
+            line_spacing=line_spacing,
+            font_size=52,
+            left_margin=left_margin,
+            top_margin=top_margin,
+            right_margin=right_margin,
+            bottom_margin=70,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            ink_depth_sigma=0,
+        )
+        page = render_markdown_handwriting("横线内文字 $\\frac{1}{2}$", background, font, config)[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertGreaterEqual(ink_bbox[1], top_margin)
+        self.assertGreaterEqual(ink_bbox[3], first_rule_y - 12)
+
+    def test_missing_math_symbol_glyphs_use_fallback_font(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        self.assertIsNone(font.getmask("↔").getbbox())
+        box = TextBox("↔", FontCache(font), 52)
+        self.assertIsNotNone(box.font.getmask("↔").getbbox())
 
     def test_mineru_sanitize_preserves_image_placeholders(self):
         sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")
