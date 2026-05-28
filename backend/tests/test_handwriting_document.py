@@ -66,6 +66,14 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("C(n,k)", "a", "b"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_additional_common_symbols(self):
+        text = plainify_latex_text(
+            r"\varpi+\varsigma+\varrho+A\bigcup B+a\leftharpoonup b+a\leqq b+\bullet+\arcsin x"
+        )
+        self.assertNotRegex(text, r"\\|varpi|varsigma|varrho|bigcup|leftharpoonup|leqq|bullet")
+        for token in ("ϖ", "ς", "ϱ", "⋃", "↼", "≦", "•", "arcsin", "x"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
         text = plainify_latex_text(
             r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"

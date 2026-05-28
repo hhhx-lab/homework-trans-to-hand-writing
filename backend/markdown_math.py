@@ -29,8 +29,18 @@ LATEX_COMMAND_NAMES = (
     "twoheadrightarrow",
     "twoheadleftarrow",
     "rightsquigarrow",
+    "rightleftharpoons",
+    "leftrightharpoons",
+    "rightharpoondown",
+    "rightharpoonup",
+    "leftharpoondown",
+    "leftharpoonup",
     "hookrightarrow",
     "hookleftarrow",
+    "nearrow",
+    "searrow",
+    "nwarrow",
+    "swarrow",
     "operatorname",
     "displaystyle",
     "overrightarrow",
@@ -49,6 +59,12 @@ LATEX_COMMAND_NAMES = (
     "varnothing",
     "leqslant",
     "geqslant",
+    "lessapprox",
+    "gtrapprox",
+    "lesssim",
+    "gtrsim",
+    "leqsim",
+    "geqsim",
     "boldsymbol",
     "overline",
     "underline",
@@ -56,6 +72,7 @@ LATEX_COMMAND_NAMES = (
     "scriptstyle",
     "therefore",
     "smallsetminus",
+    "blacksquare",
     "nonumber",
     "substack",
     "subarray",
@@ -105,6 +122,26 @@ LATEX_COMMAND_NAMES = (
     "bmod",
     "preceq",
     "succeq",
+    "leqq",
+    "geqq",
+    "lessgtr",
+    "gtrless",
+    "models",
+    "vdash",
+    "dashv",
+    "vDash",
+    "Vdash",
+    "Vvdash",
+    "smile",
+    "frown",
+    "bowtie",
+    "bigcup",
+    "bigcap",
+    "bigsqcup",
+    "bigvee",
+    "bigwedge",
+    "bigoplus",
+    "bigotimes",
     "limsup",
     "liminf",
     "injlim",
@@ -154,8 +191,16 @@ LATEX_COMMAND_NAMES = (
     "supset",
     "propto",
     "triangle",
+    "triangleleft",
+    "triangleright",
     "times",
     "cdot",
+    "cdotp",
+    "ldotp",
+    "bullet",
+    "diamond",
+    "Box",
+    "square",
     "infty",
     "cdots",
     "ldots",
@@ -180,6 +225,8 @@ LATEX_COMMAND_NAMES = (
     "Sigma",
     "Phi",
     "Psi",
+    "Xi",
+    "Pi",
     "simeq",
     "cong",
     "perp",
@@ -191,7 +238,13 @@ LATEX_COMMAND_NAMES = (
     "zeta",
     "eta",
     "rho",
+    "varrho",
     "tau",
+    "iota",
+    "kappa",
+    "upsilon",
+    "varpi",
+    "varsigma",
     "varphi",
     "phi",
     "chi",
@@ -208,6 +261,9 @@ LATEX_COMMAND_NAMES = (
     "sqcap",
     "oplus",
     "otimes",
+    "uplus",
+    "wr",
+    "amalg",
     "neq",
     "neg",
     "lnot",
@@ -217,6 +273,15 @@ LATEX_COMMAND_NAMES = (
     "sin",
     "cos",
     "tan",
+    "arcsin",
+    "arccos",
+    "arctan",
+    "sinh",
+    "cosh",
+    "tanh",
+    "cot",
+    "sec",
+    "csc",
     "log",
     "exp",
     "xi",
@@ -238,6 +303,12 @@ LATEX_COMMAND_NAMES = (
     "gg",
     "ln",
     "bm",
+    "thinspace",
+    "medspace",
+    "thickspace",
+    "negthinspace",
+    "negmedspace",
+    "negthickspace",
     "Re",
     "Im",
     "wp",
@@ -250,14 +321,19 @@ MATH_RELATION_RE = re.compile(
     r"[=<>≤≥≠≈≡∈∉⊥∥→←⇒⇐↔⇔⊂⊆⊃⊇∝]|"
     r"\\(?:leqslant|geqslant|leq|geq|le|ge|neq|ne|approx|sim|cong|simeq|equiv|"
     r"pmod|bmod|pod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
-    r"prec|preceq|succ|succeq|ll|gg|asymp|doteq|smallsetminus|sqcup|sqcap|"
+    r"prec|preceq|succ|succeq|leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|"
+    r"lessgtr|gtrless|ll|gg|asymp|doteq|models|vdash|dashv|vDash|Vdash|Vvdash|"
+    r"smallsetminus|sqcup|sqcap|uplus|wr|amalg|bigcup|bigcap|bigsqcup|bigvee|bigwedge|bigoplus|bigotimes|"
     r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|"
+    r"leftharpoonup|leftharpoondown|rightharpoonup|rightharpoondown|leftrightharpoons|rightleftharpoons|nearrow|searrow|nwarrow|swarrow|"
     r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
     r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
+    r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"bmod|pod|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
@@ -341,10 +417,13 @@ def _trim_bare_math_expr(expr: str) -> str:
 def _looks_like_inline_bare_math(expr: str) -> bool:
     if not expr or not LATEX_NAMED_COMMAND_RE.search(expr):
         return False
+    command_count = len(LATEX_NAMED_COMMAND_RE.findall(expr))
+    operator_count = len(re.findall(r"[+\-*/=<>]", expr))
     return bool(
         MATH_RELATION_RE.search(expr)
         or INLINE_STRUCTURAL_COMMAND_RE.search(expr)
         or len(re.findall(r"[_^]\s*(?:\{|[A-Za-z0-9])", expr)) >= 1
+        or (command_count >= 1 and operator_count >= 1)
     )
 
 

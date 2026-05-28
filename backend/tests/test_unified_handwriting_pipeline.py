@@ -253,6 +253,20 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("¬", "⇒", "⟹", "⟺", "≺", "≼", "≻", "≽", "≪", "≫", "≍", "≐", "↪", "↠", "↝", "∖", "⊔"):
             self.assertIn(token, debug_text)
 
+    def test_additional_common_latex_symbols_render_readably_without_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"\varpi+\varsigma+\varrho+a\leftharpoonup b+a\rightleftharpoons b+"
+            r"a\leqq b+a\lessapprox b+A\bigcup B+\bullet+\square+\arcsin x+\thinspace y",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|varpi|varsigma|varrho|leftharpoonup|rightleftharpoons|"
+            r"leqq|lessapprox|bigcup|bullet|square|thinspace",
+        )
+        for token in ("ϖ", "ς", "ϱ", "↼", "⇌", "≦", "⪅", "⋃", "•", "□", "arcsin", "x", "y"):
+            self.assertIn(token, debug_text)
+
     def test_modular_phantom_and_text_box_helpers_do_not_render_control_words(self):
         debug_text = latex_to_debug_text(
             r"\limsup_{n\to\infty}a_n+\liminf_{n\to\infty}b_n+"
@@ -330,6 +344,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         )
         self.assertNotIn("\\", debug_text)
         for token in ("题目", "a", "≡", "b", "mod", "n", "结束", "∴", "x", "≠", "0", "y", "∉", "B"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_additional_common_symbol_commands_are_wrapped_and_rendered(self):
+        markdown = r"题目 A\bigcup B 且 a\leqq b，另有 \varpi+\varsigma。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertNotIn(r"A\bigcup B", normalized.replace(r"$A\bigcup B$", ""))
+        self.assertIn(r"$A\bigcup B$", normalized)
+        self.assertIn(r"$a\leqq b$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|bigcup|leqq|varpi|varsigma")
+        for token in ("题目", "A", "⋃", "B", "且", "≦", "另有", "ϖ", "ς"):
             self.assertIn(token, debug_text)
 
     def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):
