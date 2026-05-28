@@ -15,6 +15,7 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
+from markdown_math import LATEX_RESIDUAL_RE
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -43,14 +44,6 @@ NS = {
 }
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
-LATEX_RESIDUAL_RE = re.compile(
-    r"\\(?:frac|cfrac|dfrac|tfrac|sqrt|begin|end|left|right|sum|int|lim|"
-    r"boldsymbol|boldmath|mathbf|mathrm|mathbb|operatorname|textbf|textrm|cal|small|"
-    r"overline|stackrel|leqslant|leq|geqslant|geq|neq|approx|sim|infty|times|cdot|pm|"
-    r"cdots|ldots|ln|exp|"
-    r"alpha|beta|gamma|delta|mu|sigma|theta|lambda|pi|chi|varLambda|Lambda)"
-    r"|(?<!\\)\$"
-)
 IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.I)
 FRONT_MATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.S)
@@ -123,6 +116,10 @@ def _replace_simple_frac(text: str) -> str:
     return text
 
 
+def _replace_latex_command(text: str, command: str, replacement: str) -> str:
+    return re.sub(rf"\\{command}(?![A-Za-z])", replacement, text)
+
+
 def plainify_latex_text(text: str) -> str:
     """Convert unparsed TeX fallback into readable non-LaTeX text.
 
@@ -137,34 +134,53 @@ def plainify_latex_text(text: str) -> str:
     text = text.replace("\\cfrac", "\\frac").replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
     text = _replace_simple_frac(text)
     text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"√(\1)", text)
-    text = re.sub(r"\\(?:boldsymbol|mathbf|mathrm|mathbb|textbf|operatorname)\s*\{([^{}]*)\}", r"\1", text)
+    text = re.sub(
+        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname|text)\s*\{([^{}]*)\}",
+        r"\1",
+        text,
+    )
     text = re.sub(r"\\(?:textrm|cal|small)\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\bf\s*([A-Za-z0-9]+)", r"\1", text)
     text = re.sub(r"\\overline\s*\{\{?([^{}]+)\}?\}", r"\1̄", text)
     text = re.sub(r"\\stackrel\s*\{[^{}]*\}\s*\{([^{}]+)\}", r"\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)", "", text)
+    text = re.sub(r"\\not\s*\\in(?![A-Za-z])", "∉", text)
+    text = re.sub(r"\\pmod\s*\{([^{}]*)\}", r"mod \1", text)
     symbol_replacements = {
-        r"\leqslant": "≤",
-        r"\leq": "≤",
-        r"\geqslant": "≥",
-        r"\geq": "≥",
-        r"\neq": "≠",
-        r"\approx": "≈",
-        r"\sim": "∼",
-        r"\infty": "∞",
-        r"\times": "×",
-        r"\cdot": "·",
-        r"\pm": "±",
-        r"\cdots": "⋯",
-        r"\ldots": "…",
-        r"\ln": "ln",
-        r"\exp": "exp",
+        "leqslant": "≤",
+        "leq": "≤",
+        "geqslant": "≥",
+        "geq": "≥",
+        "neq": "≠",
+        "ne": "≠",
+        "approx": "≈",
+        "sim": "∼",
+        "equiv": "≡",
+        "notin": "∉",
+        "in": "∈",
+        "perp": "⊥",
+        "parallel": "∥",
+        "angle": "∠",
+        "therefore": "∴",
+        "because": "∵",
+        "colon": ":",
+        "infty": "∞",
+        "times": "×",
+        "cdot": "·",
+        "pm": "±",
+        "cdots": "⋯",
+        "ldots": "…",
+        "dots": "…",
+        "quad": " ",
+        "qquad": " ",
+        "ln": "ln",
+        "exp": "exp",
     }
     for source, target in symbol_replacements.items():
-        text = text.replace(source, target)
+        text = _replace_latex_command(text, source, target)
     for name, replacement in GREEK_REPLACEMENTS.items():
-        text = text.replace(f"\\{name}", replacement)
+        text = _replace_latex_command(text, name, replacement)
     text = re.sub(r"\\[,;:! ]", " ", text)
     text = text.replace("\\{", "{").replace("\\}", "}").replace("\\_", "_")
     text = re.sub(r"\\([A-Za-z]+)", r"\1", text)

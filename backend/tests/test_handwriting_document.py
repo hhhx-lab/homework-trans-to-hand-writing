@@ -10,7 +10,17 @@ from lxml import etree
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from handwriting_document import convert_to_handwritten, markdown_from_source, normalize_markdown, paragraph_kind, w
+from docx import Document
+
+from handwriting_document import (
+    convert_to_handwritten,
+    inspect_docx,
+    markdown_from_source,
+    normalize_markdown,
+    paragraph_kind,
+    plainify_latex_text,
+    w,
+)
 
 
 class HandwritingDocumentTests(unittest.TestCase):
@@ -34,6 +44,25 @@ class HandwritingDocumentTests(unittest.TestCase):
         self.assertNotIn("![]", markdown)
         self.assertIn("$x^2+1$", markdown)
         self.assertIn("$$", markdown)
+
+    def test_plainify_latex_text_handles_broad_relation_commands(self):
+        text = plainify_latex_text(
+            r"a\equiv b\pmod{n}, x\perp y, l\parallel m, "
+            r"\therefore x\ne0, \because y\leq z, y\not\in B"
+        )
+        self.assertNotIn("\\", text)
+        for token in ("a", "≡", "b", "mod", "n", "⊥", "∥", "∴", "≠", "∵", "≤", "∉", "B"):
+            self.assertIn(token, text)
+
+    def test_docx_inspection_detects_broad_latex_residuals(self):
+        with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
+            docx = Path(tmp) / "raw_latex.docx"
+            document = Document()
+            document.add_paragraph(r"泄漏公式 a\equiv b, \therefore x\ne0")
+            document.save(docx)
+            report = inspect_docx(docx)
+
+        self.assertTrue(report["latex_residuals"])
 
     def test_extract_text_layer_pdf_to_markdown(self):
         try:

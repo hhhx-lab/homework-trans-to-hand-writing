@@ -17,11 +17,100 @@ DISPLAY_DOLLAR_RE = re.compile(r"(?<!\\)\$\$(.+?)(?<!\\)\$\$", re.S)
 INLINE_DOLLAR_RE = re.compile(r"(?<!\\)\$(?!\$)(.+?)(?<!\\)\$", re.S)
 INLINE_PAREN_RE = re.compile(r"\\\((.*?)\\\)", re.S)
 DISPLAY_BRACKET_RE = re.compile(r"\\\[(.*?)\\\]", re.S)
-INLINE_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|sum|prod|int|lim|left|right|begin|leq|geq|dots|ldots|cdots|textstyle|displaystyle)"
+LATEX_COMMAND_NAMES = (
+    "operatorname",
+    "scriptscriptstyle",
+    "displaystyle",
+    "leqslant",
+    "geqslant",
+    "boldsymbol",
+    "overrightarrow",
+    "overline",
+    "underline",
+    "textstyle",
+    "scriptstyle",
+    "therefore",
+    "parallel",
+    "because",
+    "mathfrak",
+    "mathcal",
+    "mathbb",
+    "mathrm",
+    "mathbf",
+    "mathsf",
+    "mathtt",
+    "mathit",
+    "textrm",
+    "textbf",
+    "notin",
+    "pmod",
+    "cfrac",
+    "dfrac",
+    "tfrac",
+    "begin",
+    "right",
+    "left",
+    "sqrt",
+    "frac",
+    "prod",
+    "oint",
+    "iint",
+    "lim",
+    "sum",
+    "int",
+    "neq",
+    "approx",
+    "equiv",
+    "perp",
+    "angle",
+    "colon",
+    "times",
+    "cdot",
+    "infty",
+    "cdots",
+    "ldots",
+    "dots",
+    "quad",
+    "qquad",
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "epsilon",
+    "varepsilon",
+    "zeta",
+    "eta",
+    "theta",
+    "vartheta",
+    "lambda",
+    "Lambda",
+    "mu",
+    "nu",
+    "xi",
+    "pi",
+    "rho",
+    "sigma",
+    "tau",
+    "phi",
+    "varphi",
+    "chi",
+    "psi",
+    "omega",
+    "leq",
+    "geq",
+    "not",
+    "in",
+    "ne",
+    "pm",
+    "ln",
+    "exp",
 )
-DISPLAY_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|sum|prod|int|lim|left|right|begin|leq|geq|dots|ldots|cdots)"
+LATEX_NAMED_COMMAND_RE = re.compile(r"\\(?:" + "|".join(LATEX_COMMAND_NAMES) + r")(?![A-Za-z])")
+LATEX_RESIDUAL_RE = re.compile(r"\\(?:[A-Za-z]+|[,;:! ]|[{}_^~'\"`|])|(?<!\\)\$")
+INLINE_COMMAND_RE = LATEX_NAMED_COMMAND_RE
+DISPLAY_COMMAND_RE = LATEX_NAMED_COMMAND_RE
+MATH_RELATION_RE = re.compile(
+    r"[=<>≤≥≠≈≡∈∉⊥∥]|\\(?:leqslant|geqslant|leq|geq|neq|ne|approx|sim|equiv|pmod|perp|parallel|in|notin)(?![A-Za-z])"
 )
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
 
@@ -35,7 +124,7 @@ def _looks_like_display_math(text: str) -> bool:
     if "\\begin{" in compact:
         return True
     command_count = len(DISPLAY_COMMAND_RE.findall(compact))
-    relation_count = len(re.findall(r"[=<>]|\\(?:leq|geq|neq|approx)", compact))
+    relation_count = len(MATH_RELATION_RE.findall(compact))
     script_count = len(re.findall(r"[_^]\s*(?:\{|[A-Za-z0-9])", compact))
     return command_count >= 1 and (relation_count >= 1 or script_count >= 2)
 

@@ -70,6 +70,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreater(docx_info["office_math_objects"], 0)
         self.assertFalse(docx_info["has_latex_residuals"])
 
+    def test_docx_math_inspector_detects_broad_latex_residuals(self):
+        document = Document()
+        document.add_paragraph(r"泄漏公式 a\equiv b, \therefore x\ne0")
+        with tempfile.TemporaryDirectory() as tmp:
+            docx = Path(tmp) / "raw_latex.docx"
+            document.save(docx)
+            docx_info = inspect_docx_math(docx.read_bytes())
+
+        self.assertTrue(docx_info["has_latex_residuals"])
+
     def test_markdown_normalizer_preserves_inline_display_math_and_image_markers(self):
         markdown = "前文 ![图1](assets/a.png) 中间 $$x^2+1$$ 后文 <img src=\"b.png\" alt=\"图2\">"
         normalized = normalize_math_markdown(markdown)
