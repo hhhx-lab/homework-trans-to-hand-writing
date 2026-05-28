@@ -64,6 +64,14 @@ LATEX_COMMAND_NAMES = (
     "overparen",
     "widetilde",
     "widehat",
+    "smallmatrix",
+    "pmatrix",
+    "bmatrix",
+    "Bmatrix",
+    "vmatrix",
+    "Vmatrix",
+    "matrix",
+    "cases",
     "Biggl",
     "Biggr",
     "biggl",
@@ -560,6 +568,17 @@ PANDOC_SAFE_WRAPPER_COMMANDS = (
     "mathinner",
     "smash",
 )
+PLAIN_TEX_MATRIX_COMMANDS = {
+    "smallmatrix": "smallmatrix",
+    "matrix": "matrix",
+    "pmatrix": "pmatrix",
+    "bmatrix": "bmatrix",
+    "Bmatrix": "Bmatrix",
+    "vmatrix": "vmatrix",
+    "Vmatrix": "Vmatrix",
+    "cases": "cases",
+}
+PLAIN_TEX_MATRIX_COMMAND_RE = re.compile(r"\\(" + "|".join(PLAIN_TEX_MATRIX_COMMANDS) + r")(?![A-Za-z])")
 UNKNOWN_LATEX_COMMAND_RE = re.compile(r"(?<!\\)\\([A-Za-z]+)(?![A-Za-z])")
 
 
@@ -760,7 +779,29 @@ def _rewrite_buildrel(match: re.Match[str]) -> str:
     return f"\\overset{{{over}}}{{{base}}}"
 
 
+def _rewrite_plain_tex_matrix_commands(expr: str) -> str:
+    result: list[str] = []
+    pos = 0
+    while pos < len(expr):
+        match = PLAIN_TEX_MATRIX_COMMAND_RE.search(expr, pos)
+        if not match:
+            result.append(expr[pos:])
+            break
+        group = _read_balanced_brace_group(expr, match.end())
+        if group is None:
+            result.append(expr[pos:match.end()])
+            pos = match.end()
+            continue
+        content, end = group
+        env = PLAIN_TEX_MATRIX_COMMANDS[match.group(1)]
+        result.append(expr[pos:match.start()])
+        result.append(rf"\begin{{{env}}}{_rewrite_plain_tex_matrix_commands(content)}\end{{{env}}}")
+        pos = end
+    return "".join(result)
+
+
 def _rewrite_unsupported_presentation_helpers(expr: str) -> str:
+    expr = _rewrite_plain_tex_matrix_commands(expr)
     expr = re.sub(r"\\cfrac(?![A-Za-z])", r"\\frac", expr)
     expr = re.sub(r"\\(?:dbinom|tbinom)(?![A-Za-z])", r"\\binom", expr)
     expr = re.sub(

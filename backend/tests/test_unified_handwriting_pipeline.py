@@ -340,6 +340,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("a", "b", "c+d"):
             self.assertIn(token, debug_text)
 
+    def test_plain_tex_matrix_commands_render_as_structured_matrices(self):
+        expr = (
+            r"\matrix{a&b\\c&d}+"
+            r"\pmatrix{1&2\\3&4}+"
+            r"\cases{x^2,&x>0\\0,&x\leq 0}"
+        )
+        normalized = normalize_math_markdown(f"题目 {expr} 结束")
+        self.assertIn(r"\begin{matrix}", normalized)
+        self.assertIn(r"\begin{pmatrix}", normalized)
+        self.assertIn(r"\begin{cases}", normalized)
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|matrix|pmatrix|cases")
+        for token in ("[[a,b];[c,d]]", "[[1,2];[3,4]]", "x^2", "x>0", "x≤0"):
+            self.assertIn(token, debug_text)
+
     def test_named_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\acute{x}+\grave{y}+\breve{z}+\check{w}+\mathring{A}", FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|acute|grave|breve|check|mathring")
