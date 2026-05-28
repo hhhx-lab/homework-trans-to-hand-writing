@@ -88,6 +88,15 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("≰", "⊈", "⊠", "ℶ", "⅁", "℧", "⊫", "⊬", "a", "b", "A", "B"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_more_common_symbols(self):
+        text = plainify_latex_text(
+            r"a\nparallel b+a\nsmile b+a\smallfrown b+\coprod_{i=1}^{n}A_i+"
+            r"\clubsuit+\natural+A\diagup B+A\diagdown B"
+        )
+        self.assertNotRegex(text, r"\\|nparallel|nsmile|smallfrown|coprod|clubsuit|natural|diagup|diagdown")
+        for token in ("∦", "¬⌣", "⌢", "∐", "i", "1", "n", "A", "♣", "♮", "⟋", "⟍", "B"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_structural_helper_content(self):
         text = plainify_latex_text(
             r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+\mathrel{R}+"

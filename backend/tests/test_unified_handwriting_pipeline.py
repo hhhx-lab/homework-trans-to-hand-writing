@@ -292,6 +292,24 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("≰", "≱", "≮", "≯", "⪇", "⪈", "⊈", "⊉", "⋐", "⋑", "⊠", "⊞", "⋉", "⋌", "ℶ", "⅁", "℧", "‵", "⊫", "⊬", "⊯"):
             self.assertIn(token, debug_text)
 
+    def test_more_common_symbols_render_readably_without_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"a\nmid b+a\nparallel b+a\ncong b+a\napprox b+a\nsim b+"
+            r"a\nsmile b+a\nfrown b+a\smallsmile b+a\smallfrown b+"
+            r"\coprod_{i=1}^{n}A_i+\bigstar+\lozenge+\blacktriangle+"
+            r"\clubsuit+\diamondsuit+\heartsuit+\spadesuit+\natural+\flat+\sharp+"
+            r"\top+\bot+A\diagup B+A\diagdown B",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|nmid|nparallel|ncong|napprox|nsim|nsmile|nfrown|smallsmile|smallfrown|"
+            r"coprod|bigstar|lozenge|blacktriangle|"
+            r"clubsuit|diamondsuit|heartsuit|spadesuit|natural|flat|sharp|top|bot|diagup|diagdown",
+        )
+        for token in ("∤", "∦", "≇", "≉", "≁", "¬⌣", "¬⌢", "⌣", "⌢", "∐", "★", "◊", "▲", "♣", "♦", "♥", "♠", "♮", "♭", "♯", "⊤", "⊥", "⟋", "⟍"):
+            self.assertIn(token, debug_text)
+
     def test_structural_latex_helpers_preserve_content_without_command_names(self):
         debug_text = latex_to_debug_text(
             r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+"
@@ -421,6 +439,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|nleq|nsubseteq|beth|Game")
         for token in ("题目", "≰", "且", "⊈", "另有", "ℶ", "⅁"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_more_common_symbols_are_wrapped_and_rendered(self):
+        markdown = r"题目 a\nparallel b 且 \coprod_{i=1}^{n}A_i，另有 \clubsuit+\natural。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$a\nparallel b$", normalized)
+        self.assertIn(r"$\coprod_{i=1}^{n}A_i$", normalized)
+        self.assertIn(r"$\clubsuit+\natural$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|nparallel|coprod|clubsuit|natural")
+        for token in ("题目", "∦", "且", "∐", "i=1", "n", "A", "另有", "♣", "♮"):
             self.assertIn(token, debug_text)
 
     def test_bare_structural_helpers_are_wrapped_and_rendered(self):
