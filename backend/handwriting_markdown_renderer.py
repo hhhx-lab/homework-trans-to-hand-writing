@@ -1072,6 +1072,31 @@ def _blocks(markdown: str) -> list[tuple[str, str]]:
 
 
 INLINE_MATH_RE = re.compile(r"\$([^$\n]+)\$")
+RAW_LATEX_COMMAND_RE = re.compile(r"\\(?:[A-Za-z]+|[{}_^~'`\"|])")
+TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
+
+
+def _is_latex_context_char(ch: str) -> bool:
+    if TEXT_MATH_BOUNDARY_RE.match(ch):
+        return False
+    return ch.isalnum() or ch.isspace() or ch in "\\{}[]()_^+-=*/<>.,;:|~'\"!&"
+
+
+def _raw_latex_span(text: str, pos: int) -> tuple[int, int] | None:
+    match = RAW_LATEX_COMMAND_RE.search(text, pos)
+    if not match:
+        return None
+    start = match.start()
+    end = match.end()
+    while start > 0 and _is_latex_context_char(text[start - 1]):
+        start -= 1
+    while end < len(text) and _is_latex_context_char(text[end]):
+        end += 1
+    while start < match.start() and text[start].isspace():
+        start += 1
+    while end > match.end() and text[end - 1].isspace():
+        end -= 1
+    return start, end
 
 
 def _split_top_level_math(expr: str, separators: set[str]) -> list[str]:
@@ -1142,11 +1167,29 @@ def _text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
     pos = 0
     for match in INLINE_MATH_RE.finditer(text):
         if match.start() > pos:
-            boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:match.start()])
+            boxes.extend(_plain_text_to_boxes(text[pos:match.start()], fonts, size))
         boxes.append(latex_to_box(match.group(1), fonts, size))
         pos = match.end()
     if pos < len(text):
-        boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:])
+        boxes.extend(_plain_text_to_boxes(text[pos:], fonts, size))
+    return boxes
+
+
+def _plain_text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
+    boxes: list[Box] = []
+    pos = 0
+    while pos < len(text):
+        span = _raw_latex_span(text, pos)
+        if not span:
+            boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:])
+            break
+        start, end = span
+        if start < pos:
+            start = pos
+        if start > pos:
+            boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:start])
+        boxes.append(latex_to_box(text[start:end], fonts, size))
+        pos = end
     return boxes
 
 
