@@ -18,8 +18,10 @@ import mineru_adapter
 from handwriting_markdown_renderer import (
     FontCache,
     HandwritingRenderConfig,
+    ScriptBox,
     TextBox,
     latex_to_debug_text,
+    latex_to_box,
     markdown_render_debug_text,
     render_markdown_handwriting,
     write_images_to_docx_bytes,
@@ -174,6 +176,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         )
         for token in ("F", "c", "≡", "mod", "n", "⊥", "∥", "∠", "ABC", "∴", "≠", "∵", "≤", ":", "∉", "B", "‖v‖"):
             self.assertIn(token, debug_text)
+
+    def test_limits_commands_attach_scripts_to_big_operator(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        box = latex_to_box(r"\sum\limits_{i=1}^{n} x_i", FontCache(font), 52)
+        first = box.children[0]
+        self.assertIsInstance(first, ScriptBox)
+        self.assertEqual(first.base.debug_text(), "∑")
+        self.assertEqual(first.sub.debug_text(), "i=1")
+        self.assertEqual(first.sup.debug_text(), "n")
 
     def test_mineru_sanitize_preserves_image_placeholders(self):
         sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")

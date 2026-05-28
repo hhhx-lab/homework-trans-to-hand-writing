@@ -938,8 +938,19 @@ class LatexParser:
     def _parse_scripts(self, base: Box) -> Box:
         sup = None
         sub = None
+        limits_override: bool | None = None
         while True:
             self._skip_space()
+            saved = self.pos
+            if self.pos < len(self.text) and self.text[self.pos] == "\\":
+                name = self._read_command_name()
+                if name == "limits":
+                    limits_override = True
+                    continue
+                if name == "nolimits":
+                    limits_override = False
+                    continue
+                self.pos = saved
             if self.pos >= len(self.text) or self.text[self.pos] not in {"^", "_"}:
                 break
             marker = self.text[self.pos]
@@ -949,7 +960,7 @@ class LatexParser:
                 sup = script
             else:
                 sub = script
-        limits = base.debug_text() in {"∑", "∫", "∏", "lim"}
+        limits = limits_override if limits_override is not None else base.debug_text() in {"∑", "∫", "∬", "∭", "∏", "lim"}
         return ScriptBox(base, sup, sub, limits=limits) if sup or sub else base
 
     def _skip_optional(self) -> None:
