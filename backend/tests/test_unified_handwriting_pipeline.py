@@ -282,6 +282,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("def", "=", "a+b", "c+d", "n", "k", "R", "x", "y", "⋯", "a", "b", "c"):
             self.assertIn(token, debug_text)
 
+    def test_legacy_buildrel_and_text_style_wrappers_do_not_render_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"\buildrel def \over =+\buildrel * \over \longrightarrow+"
+            r"\pmb{x}+\boldmath{y}+\cal{F}+\Bbb{R}+"
+            r"\textnormal{abc}+\textit{def}+\operatornamewithlimits{argmax}_{x}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|buildrel|over|longrightarrow|pmb|boldmath|cal|Bbb|"
+            r"textnormal|textit|operatornamewithlimits",
+        )
+        for token in ("def", "=", "*", "⟶", "x", "y", "F", "R", "abc", "argmax"):
+            self.assertIn(token, debug_text)
+
     def test_modular_phantom_and_text_box_helpers_do_not_render_control_words(self):
         debug_text = latex_to_debug_text(
             r"\limsup_{n\to\infty}a_n+\liminf_{n\to\infty}b_n+"
@@ -380,6 +395,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|stackrel|mathrel")
         for token in ("题目", "def", "=", "且", "R", "结束"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_legacy_buildrel_is_wrapped_and_rendered(self):
+        markdown = r"题目 \buildrel def \over = 结束。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$\buildrel def \over =$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|buildrel|over")
+        for token in ("题目", "def", "=", "结束"):
             self.assertIn(token, debug_text)
 
     def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):

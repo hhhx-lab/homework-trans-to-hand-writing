@@ -210,7 +210,11 @@ def plainify_latex_text(text: str) -> str:
         r"\1",
         text,
     )
-    text = re.sub(r"\\(?:textrm|cal|small)\s*\{([^{}]*)\}", r"\1", text)
+    text = re.sub(
+        r"\\(?:textrm|textnormal|textit|textup|textsl|texttt|textsf|cal|Bbb|pmb|small|operatornamewithlimits)\s*\{([^{}]*)\}",
+        r"\1",
+        text,
+    )
     text = re.sub(r"\\bf\s*([A-Za-z0-9]+)", r"\1", text)
     text = re.sub(r"\\overline\s*\{\{?([^{}]+)\}?\}", r"\1̄", text)
     text = re.sub(r"\\(?:acute|')\s*\{([^{}]+)\}", r"´\1", text)
@@ -218,6 +222,7 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\breve\s*\{([^{}]+)\}", r"˘\1", text)
     text = re.sub(r"\\check\s*\{([^{}]+)\}", r"ˇ\1", text)
     text = re.sub(r"\\mathring\s*\{([^{}]+)\}", r"˚\1", text)
+    text = re.sub(r"\\buildrel\s+(.+?)\s+\\over\s+(\\[A-Za-z]+|[^\s+]+)", r"\2^\1", text)
     text = re.sub(r"\\stackrel\s*\{([^{}]*)\}\s*\{([^{}]+)\}", r"\2^\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = text.replace("&", " ")
@@ -258,6 +263,9 @@ def plainify_latex_text(text: str) -> str:
         "Longrightarrow": "⟹",
         "Longleftarrow": "⟸",
         "Longleftrightarrow": "⟺",
+        "longrightarrow": "⟶",
+        "longleftarrow": "⟵",
+        "longleftrightarrow": "⟷",
         "implies": "⇒",
         "leftharpoonup": "↼",
         "leftharpoondown": "↽",

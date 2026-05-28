@@ -83,6 +83,18 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("def", "=", "a+b", "c+d", "n", "k", "R", "x", "y", "⋯"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_legacy_buildrel_and_text_wrappers(self):
+        text = plainify_latex_text(
+            r"\buildrel def \over =+\pmb{x}+\boldmath{y}+\cal{F}+\Bbb{R}+"
+            r"\textnormal{abc}+\textit{def}+\operatornamewithlimits{argmax}_{x}"
+        )
+        self.assertNotRegex(
+            text,
+            r"\\|buildrel|over|pmb|boldmath|cal|Bbb|textnormal|textit|operatornamewithlimits",
+        )
+        for token in ("def", "=", "x", "y", "F", "R", "abc", "argmax"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
         text = plainify_latex_text(
             r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"

@@ -88,6 +88,9 @@ SYMBOLS = {
     "Leftarrow": "⇐",
     "Longrightarrow": "⟹",
     "Longleftarrow": "⟸",
+    "longrightarrow": "⟶",
+    "longleftarrow": "⟵",
+    "longleftrightarrow": "⟷",
     "leftrightarrow": "↔",
     "Leftrightarrow": "⇔",
     "Longleftrightarrow": "⟺",
@@ -298,6 +301,10 @@ GROUP_WRAPPERS = {
     "mathtt",
     "mathit",
     "bm",
+    "pmb",
+    "boldmath",
+    "cal",
+    "Bbb",
     "mathrel",
     "mathbin",
     "mathord",
@@ -310,8 +317,15 @@ GROUP_WRAPPERS = {
     "llap",
     "mathclap",
     "operatorname",
+    "operatornamewithlimits",
     "text",
     "textrm",
+    "textnormal",
+    "textit",
+    "textup",
+    "textsl",
+    "texttt",
+    "textsf",
     "boldsymbol",
     "overline",
     "underline",
@@ -1196,6 +1210,29 @@ class LatexParser:
         self.pos += 1
         return "" if delimiter == "." else delimiter
 
+    def _read_until_top_level_command(self, name: str) -> str | None:
+        marker = f"\\{name}"
+        start = self.pos
+        depth = 0
+        i = self.pos
+        while i < len(self.text):
+            if depth == 0 and self.text.startswith(marker, i):
+                end = i + len(marker)
+                if end >= len(self.text) or not self.text[end].isalpha():
+                    content = self.text[start:i]
+                    self.pos = end
+                    return content
+            ch = self.text[i]
+            if ch == "\\" and i + 1 < len(self.text) and self.text[i + 1] in "{}":
+                i += 2
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth = max(0, depth - 1)
+            i += 1
+        return None
+
     def _delimiter_text_from_group_content(self, content: str) -> str:
         content = content.strip()
         if not content or content == ".":
@@ -1285,7 +1322,7 @@ class LatexParser:
             return self._parse_group(0.9)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
-        if name == "operatorname":
+        if name in {"operatorname", "operatornamewithlimits"}:
             self._skip_optional_star()
             return TextBox(self._read_group_text(), self.fonts, self.size)
         if name == "mathop":
@@ -1337,6 +1374,14 @@ class LatexParser:
             over = self._parse_group(0.62)
             base = self._parse_group(0.92)
             return ScriptBox(base, over, None, limits=True)
+        if name == "buildrel":
+            over_content = self._read_until_top_level_command("over")
+            if over_content is not None:
+                self._skip_space()
+                base = self._parse_scripts(self._parse_atom()) if self.pos < len(self.text) else TextBox(" ", self.fonts, self.size)
+                over = LatexParser(over_content.strip(), self.fonts, max(8, int(self.size * 0.62))).parse()
+                return ScriptBox(base, over, None, limits=True)
+            return self._parse_unknown_command(name)
         if name == "underset":
             under = self._parse_group(0.62)
             base = self._parse_group(0.92)

@@ -22,6 +22,9 @@ LATEX_COMMAND_NAMES = (
     "Longleftrightarrow",
     "Longrightarrow",
     "Longleftarrow",
+    "longleftrightarrow",
+    "longrightarrow",
+    "longleftarrow",
     "Leftrightarrow",
     "leftrightarrow",
     "xrightarrow",
@@ -42,6 +45,7 @@ LATEX_COMMAND_NAMES = (
     "nwarrow",
     "swarrow",
     "operatorname",
+    "operatornamewithlimits",
     "displaystyle",
     "overrightarrow",
     "underrightarrow",
@@ -91,6 +95,10 @@ LATEX_COMMAND_NAMES = (
     "mathcal",
     "mathds",
     "mathbb",
+    "boldmath",
+    "pmb",
+    "Bbb",
+    "cal",
     "mathrel",
     "mathbin",
     "mathord",
@@ -101,6 +109,7 @@ LATEX_COMMAND_NAMES = (
     "mathclap",
     "raisebox",
     "stackrel",
+    "buildrel",
     "genfrac",
     "hdotsfor",
     "mathrm",
@@ -110,6 +119,12 @@ LATEX_COMMAND_NAMES = (
     "mathtt",
     "mathit",
     "textrm",
+    "textnormal",
+    "textit",
+    "textup",
+    "textsl",
+    "texttt",
+    "textsf",
     "textbf",
     "aleph",
     "atop",
@@ -341,13 +356,15 @@ MATH_RELATION_RE = re.compile(
     r"smallsetminus|sqcup|sqcap|uplus|wr|amalg|bigcup|bigcap|bigsqcup|bigvee|bigwedge|bigoplus|bigotimes|"
     r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|"
     r"leftharpoonup|leftharpoondown|rightharpoonup|rightharpoondown|leftrightharpoons|rightleftharpoons|nearrow|searrow|nwarrow|swarrow|"
-    r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
+    r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|longrightarrow|longleftarrow|longleftrightarrow|"
+    r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
     r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
-    r"stackrel|genfrac|mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
+    r"stackrel|buildrel|genfrac|mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
+    r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
     r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
@@ -356,6 +373,7 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
 TEXT_GROUP_RE = re.compile(r"\\(?:text|textrm|textbf)\s*\{[^{}]*\}")
+BARE_BUILDREL_RE = re.compile(r"\\buildrel\s+.+?\s+\\over\s+(?:\\[A-Za-z]+|[^\s\u4e00-\u9fff，。；：！？、]+)")
 
 
 def _looks_like_display_math(text: str) -> bool:
@@ -452,6 +470,15 @@ def _wrap_bare_latex_spans(text: str) -> str:
         if not match:
             result.append(text[pos:])
             break
+        if text.startswith("\\buildrel", match.start()):
+            buildrel_match = BARE_BUILDREL_RE.match(text, match.start())
+            if buildrel_match:
+                start = match.start()
+                expr = buildrel_match.group(0).strip()
+                result.append(text[pos:start])
+                result.append(f"${normalize_latex_math(expr)}$")
+                pos = buildrel_match.end()
+                continue
         start = match.start()
         while start > pos and not text[start - 1].isspace() and _is_bare_math_char(text[start - 1]):
             start -= 1
