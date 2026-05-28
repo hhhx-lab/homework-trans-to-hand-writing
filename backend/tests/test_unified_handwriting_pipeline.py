@@ -382,6 +382,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"\\|blacktriangleright|blacktriangleleft|trianglerighteq|trianglelefteq|maltese",
         )
 
+    def test_not_relations_render_as_standard_negated_symbols(self):
+        debug_text = latex_to_debug_text(
+            r"\not\approx+\not\sim+\not\equiv+\not\leqslant+\not\geqslant+\not\parallel",
+            FONT_PATH,
+        )
+        for token in ("≉", "≁", "≢", "≰", "≱", "∦"):
+            self.assertIn(token, debug_text)
+        self.assertNotRegex(debug_text, r"¬[≈∼≤≥∥]|\\|not")
+
     def test_named_delimiter_commands_render_as_visible_delimiters(self):
         debug_text = latex_to_debug_text(
             r"\lbrace x\in A \rbrace+\lparen y \rparen+\lbrack z \rbrack+"

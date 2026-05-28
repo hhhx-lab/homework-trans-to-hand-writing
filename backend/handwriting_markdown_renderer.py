@@ -1493,9 +1493,16 @@ class LatexParser:
                 "supseteq": "⊉",
                 "le": "≰",
                 "leq": "≰",
+                "leqslant": "≰",
                 "ge": "≱",
                 "geq": "≱",
+                "geqslant": "≱",
                 "equiv": "≢",
+                "approx": "≉",
+                "simeq": "≄",
+                "sim": "≁",
+                "cong": "≇",
+                "parallel": "∦",
                 "=": "≠",
             }
             return TextBox(negated.get(next_name, "¬" + SYMBOLS.get(next_name, next_name)), self.fonts, self.size)
