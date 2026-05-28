@@ -1603,6 +1603,8 @@ class LatexParser:
             return TextBox(BIG_OPERATORS[name], self.fonts, int(self.size * (1.35 if name != "lim" else 1.0)))
         if name in GREEK:
             return TextBox(GREEK[name], self.fonts, self.size)
+        if name in DELIMITER_COMMANDS:
+            return TextBox(DELIMITER_COMMANDS[name], self.fonts, self.size)
         if name in SYMBOLS:
             return TextBox(SYMBOLS[name], self.fonts, self.size)
         if name in {"\\", ",", ";", ":", "!", " "}:

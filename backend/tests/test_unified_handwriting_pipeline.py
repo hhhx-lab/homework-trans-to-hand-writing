@@ -312,6 +312,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("√[3]", "x^2", "y", "→", "n→0", "m→∞", "←", "k", "z"):
             self.assertIn(token, debug_text)
 
+    def test_named_delimiter_commands_render_as_visible_delimiters(self):
+        debug_text = latex_to_debug_text(
+            r"\lbrace x\in A \rbrace+\lparen y \rparen+\lbrack z \rbrack+"
+            r"\genfrac{\lbrace}{\rbrace}{0pt}{}{a}{b}",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("{x∈A}", "(y)", "[z]", "{(a)/(b)}"):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(debug_text, r"\\|lbrace|rbrace|lparen|rparen|lbrack|rbrack|genfrac")
+
     def test_alignment_environment_and_equation_metadata_do_not_render_control_words(self):
         debug_text = latex_to_debug_text(
             r"\begin{align}a&=b+c\\d&=e+f\tag{1}\label{eq:one}\end{align}",
