@@ -311,6 +311,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("[[1,2];[3,4]]", "[[a,b];[c,d]]", "[[p,q];[r,s]]"):
             self.assertIn(token, debug_text)
 
+    def test_matrix_parser_preserves_escaped_ampersands_inside_cells(self):
+        debug_text = latex_to_debug_text(
+            r"\begin{matrix}a\&b&c\\\text{A&B}&d\end{matrix}+"
+            r"\begin{cases}x\&y,&x>0\\0,&x\leq0\end{cases}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|text|cases|matrix")
+        for token in ("a&b", "c", "A&B", "d", "x&y", "x>0", "x≤0"):
+            self.assertIn(token, debug_text)
+
     def test_extended_decorations_and_boxed_content_do_not_render_command_names(self):
         debug_text = latex_to_debug_text(
             r"\overparen{AB}+\underparen{CD}+\overleftarrow{EF}+"

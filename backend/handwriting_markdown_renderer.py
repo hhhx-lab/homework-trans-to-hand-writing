@@ -1291,12 +1291,56 @@ class LatexParser:
             return None
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 
+    def _split_matrix_rows(self, content: str) -> list[str]:
+        rows: list[str] = []
+        start = 0
+        depth = 0
+        i = 0
+        while i < len(content):
+            if content.startswith(r"\\", i) and depth == 0:
+                rows.append(content[start:i])
+                i += 2
+                start = i
+                continue
+            ch = content[i]
+            if ch == "\\":
+                i += 2 if i + 1 < len(content) else 1
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth = max(0, depth - 1)
+            i += 1
+        rows.append(content[start:])
+        return rows
+
+    def _split_matrix_cells(self, row: str) -> list[str]:
+        cells: list[str] = []
+        start = 0
+        depth = 0
+        i = 0
+        while i < len(row):
+            ch = row[i]
+            if ch == "\\":
+                i += 2 if i + 1 < len(row) else 1
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth = max(0, depth - 1)
+            elif ch == "&" and depth == 0:
+                cells.append(row[start:i])
+                start = i + 1
+            i += 1
+        cells.append(row[start:])
+        return cells
+
     def _parse_matrix_content(self, content: str, env: str, scale: float = 0.86) -> MatrixBox:
         rows = []
-        for raw_row in re.split(r"\\\\", content):
+        for raw_row in self._split_matrix_rows(content):
             cells = [
                 LatexParser(cell.strip(), self.fonts, max(8, int(self.size * scale))).parse()
-                for cell in raw_row.split("&")
+                for cell in self._split_matrix_cells(raw_row)
             ]
             if cells:
                 rows.append(cells)
