@@ -266,11 +266,26 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             self.assertIn(token, compact_text)
         self.assertNotRegex(debug_text, r"\\[_%$&#]|text|mbox|operatorname")
 
+    def test_text_like_math_groups_render_latex_space_commands_as_spaces(self):
+        debug_text = latex_to_debug_text(
+            r"\text{A\ B}+\text{A\quad B}+\mbox{C\qquad D}+\operatorname{arg\,min}",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("AB", "CD", "argmin"):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(debug_text, r"\\|quad|qquad|operatorname|text|mbox")
+
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
         self.assertIn("¯x", debug_text)
         self.assertIn("^y", debug_text)
         self.assertIn("→z", debug_text)
+
+    def test_contextual_dots_commands_render_as_ellipsis(self):
+        debug_text = latex_to_debug_text(r"\dots+\dotsc+\dotsi+\dotsb+\dotsm+\dotso", FONT_PATH)
+        self.assertGreaterEqual(debug_text.count("…"), 6)
+        self.assertNotRegex(debug_text, r"\\|dots|ldots")
 
     def test_infix_over_renders_as_fraction(self):
         self.assertEqual("(a)/(b)", latex_to_debug_text(r"a \over b", FONT_PATH))

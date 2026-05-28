@@ -1744,6 +1744,9 @@ RAW_LATEX_COMMAND_RE = re.compile(r"\\(?:[A-Za-z]+|[{}_^~'`\"|])")
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 LATEX_CONTEXT_CHARS = set("\\{}[]()_^+-=*/<>.,;:|~'\"!&")
 MARKDOWN_ESCAPED_TEXT_RE = re.compile(r"\\([&%#_$/*+\-=<>.!?,:;()[\]{}|~`])")
+LATEX_TEXT_SPACE_COMMAND_RE = re.compile(
+    r"\\(?:qquad|quad|enspace|thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|[,;:! ])"
+)
 
 
 def _is_likely_path_escape(text: str, start: int) -> bool:
@@ -1902,11 +1905,12 @@ def _display_math_lines(expr: str, available_width: int, fonts: FontCache, size:
 
 
 def _unescape_text_literals(text: str) -> str:
+    text = LATEX_TEXT_SPACE_COMMAND_RE.sub(" ", text)
     return MARKDOWN_ESCAPED_TEXT_RE.sub(r"\1", text)
 
 
 def _unescape_markdown_text(text: str) -> str:
-    return _unescape_text_literals(text)
+    return MARKDOWN_ESCAPED_TEXT_RE.sub(r"\1", text)
 
 
 def _text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:

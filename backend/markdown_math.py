@@ -889,8 +889,7 @@ def normalize_latex_math(expr: str) -> str:
         return f"@@TEXTGROUP{len(protected_text_groups) - 1}@@"
 
     expr = TEXT_GROUP_RE.sub(protect_text_group, expr)
-    expr = expr.replace("\\dots", "\\ldots")
-    expr = expr.replace("\\dotsc", "\\ldots").replace("\\dotsb", "\\ldots").replace("\\dotso", "\\ldots")
+    expr = re.sub(r"\\(?:dotsc|dotsi|dotsb|dotsm|dotso|dots)(?![A-Za-z])", r"\\ldots", expr)
     expr = re.sub(r"\s*([_^])\s*", r"\1", expr)
     expr = re.sub(r"\{\s*([^{}\n]+?)\s*\}", r"{\1}", expr)
     for index, text_group in enumerate(protected_text_groups):
