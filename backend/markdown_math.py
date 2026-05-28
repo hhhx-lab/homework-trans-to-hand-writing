@@ -83,6 +83,7 @@ LATEX_COMMAND_NAMES = (
     "textrm",
     "textbf",
     "aleph",
+    "atop",
     "eqref",
     "hbar",
     "label",
@@ -92,11 +93,15 @@ LATEX_COMMAND_NAMES = (
     "hphantom",
     "vphantom",
     "phantom",
+    "choose",
     "multirow",
     "mapsto",
     "implies",
     "notin",
     "pmod",
+    "brack",
+    "brace",
+    "above",
     "bmod",
     "preceq",
     "succeq",
@@ -253,7 +258,7 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
     r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
-    r"bmod|pod|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"
+    r"bmod|pod|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

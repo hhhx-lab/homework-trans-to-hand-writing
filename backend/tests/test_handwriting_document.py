@@ -60,6 +60,12 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("‖v‖", "‖x‖", "(a)/(b)", "if x>0"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_legacy_infix_stack_content(self):
+        text = plainify_latex_text(r"n \choose k+a \atop b")
+        self.assertNotRegex(text, r"\\|choose|atop")
+        for token in ("C(n,k)", "a", "b"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
         text = plainify_latex_text(
             r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"

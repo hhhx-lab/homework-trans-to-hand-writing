@@ -925,13 +925,26 @@ class LatexParser:
             if terminator == "}" and self.text[self.pos] == "}":
                 self.pos += 1
                 break
-            if self._consume_named_command("over"):
+            infix_name = None
+            for candidate in ("over", "choose", "atop", "brack", "brace"):
+                if self._consume_named_command(candidate):
+                    infix_name = candidate
+                    break
+            if infix_name:
                 while children and isinstance(children[-1], TextBox) and children[-1].text.isspace():
                     children.pop()
                 self._skip_space()
                 numerator = HBox(children, gap=max(0, self.size // 18)) if children else TextBox(" ", self.fonts, self.size)
                 denominator = self._parse_until(terminator)
-                return FractionBox(numerator, denominator, max(5, self.size // 10))
+                if infix_name == "over":
+                    return FractionBox(numerator, denominator, max(5, self.size // 10))
+                if infix_name == "choose":
+                    return BinomialBox(numerator, denominator, self.size, self.fonts)
+                if infix_name == "brack":
+                    return MatrixBox([[numerator], [denominator]], "bmatrix", self.size, self.fonts)
+                if infix_name == "brace":
+                    return MatrixBox([[numerator], [denominator]], "Bmatrix", self.size, self.fonts)
+                return MatrixBox([[numerator], [denominator]], "substack", self.size, self.fonts)
             atom = self._parse_atom()
             atom = self._parse_scripts(atom)
             if atom:

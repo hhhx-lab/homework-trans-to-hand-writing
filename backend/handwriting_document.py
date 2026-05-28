@@ -273,8 +273,18 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"‖\s+", "‖", text)
     text = re.sub(r"\s+‖", "‖", text)
     text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\choose\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"C({match.group(1).strip()},{match.group(2).strip()})",
+        text,
+    )
+    text = re.sub(
         r"\{?([A-Za-z0-9_^\-]+)\}?\s*\\over\s*\{?([A-Za-z0-9_^\-]+)\}?",
         r"(\1)/(\2)",
+        text,
+    )
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\(?:atop|brack|brace|above)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
         text,
     )
     text = re.sub(r"\\[,;:! ]", " ", text)

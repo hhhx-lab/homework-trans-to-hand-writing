@@ -132,6 +132,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
     def test_infix_over_renders_as_fraction(self):
         self.assertEqual("(a)/(b)", latex_to_debug_text(r"a \over b", FONT_PATH))
 
+    def test_legacy_infix_stack_commands_do_not_render_control_words(self):
+        choose_text = latex_to_debug_text(r"n \choose k", FONT_PATH)
+        stack_text = latex_to_debug_text(r"a \atop b+c \brack d+e \brace f", FONT_PATH)
+        debug_text = choose_text + stack_text
+        self.assertNotRegex(debug_text, r"\\|choose|atop|brack|brace")
+        self.assertIn("C(n,k)", choose_text)
+        for token in ("a", "b", "c", "d", "e", "f"):
+            self.assertIn(token, stack_text)
+
     def test_text_command_preserves_inner_spaces(self):
         self.assertEqual("if x>0", latex_to_debug_text(r"\text{if }x>0", FONT_PATH))
 
