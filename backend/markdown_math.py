@@ -91,6 +91,18 @@ LATEX_COMMAND_NAMES = (
     "mathcal",
     "mathds",
     "mathbb",
+    "mathrel",
+    "mathbin",
+    "mathord",
+    "mathopen",
+    "mathclose",
+    "mathpunct",
+    "mathinner",
+    "mathclap",
+    "raisebox",
+    "stackrel",
+    "genfrac",
+    "hdotsfor",
     "mathrm",
     "mathbf",
     "mathop",
@@ -110,6 +122,7 @@ LATEX_COMMAND_NAMES = (
     "hphantom",
     "vphantom",
     "phantom",
+    "smash",
     "choose",
     "multirow",
     "mapsto",
@@ -164,6 +177,8 @@ LATEX_COMMAND_NAMES = (
     "cline",
     "mbox",
     "hbox",
+    "rlap",
+    "llap",
     "sout",
     "bcancel",
     "xcancel",
@@ -331,7 +346,9 @@ MATH_RELATION_RE = re.compile(
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
-    r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"stackrel|genfrac|mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
+    r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"bmod|pod|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"

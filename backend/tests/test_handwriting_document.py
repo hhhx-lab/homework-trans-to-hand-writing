@@ -74,6 +74,15 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("ϖ", "ς", "ϱ", "⋃", "↼", "≦", "•", "arcsin", "x"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_structural_helper_content(self):
+        text = plainify_latex_text(
+            r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+\mathrel{R}+"
+            r"\genfrac{\{}{\}}{0pt}{}{n}{k}+\smash{x}+\raisebox{1ex}{y}+\hdotsfor{3}"
+        )
+        self.assertNotRegex(text, r"\\|stackrel|genfrac|mathrel|smash|raisebox|hdotsfor|0pt|1ex")
+        for token in ("def", "=", "a+b", "c+d", "n", "k", "R", "x", "y", "⋯"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
         text = plainify_latex_text(
             r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"

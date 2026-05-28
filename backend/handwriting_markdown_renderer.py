@@ -298,6 +298,17 @@ GROUP_WRAPPERS = {
     "mathtt",
     "mathit",
     "bm",
+    "mathrel",
+    "mathbin",
+    "mathord",
+    "mathopen",
+    "mathclose",
+    "mathpunct",
+    "mathinner",
+    "smash",
+    "rlap",
+    "llap",
+    "mathclap",
     "operatorname",
     "text",
     "textrm",
@@ -1076,6 +1087,9 @@ class LatexParser:
         self.pos += 1
         while self.pos < len(self.text):
             ch = self.text[self.pos]
+            if ch == "\\" and self.pos + 1 < len(self.text) and self.text[self.pos + 1] in "{}":
+                self.pos += 2
+                continue
             if ch == "{":
                 depth += 1
             elif ch == "}":
@@ -1096,6 +1110,9 @@ class LatexParser:
         self.pos += 1
         while self.pos < len(self.text):
             ch = self.text[self.pos]
+            if ch == "\\" and self.pos + 1 < len(self.text) and self.text[self.pos + 1] in "{}":
+                self.pos += 2
+                continue
             if ch == "{":
                 depth += 1
             elif ch == "}":
@@ -1178,6 +1195,14 @@ class LatexParser:
         delimiter = self.text[self.pos]
         self.pos += 1
         return "" if delimiter == "." else delimiter
+
+    def _delimiter_text_from_group_content(self, content: str) -> str:
+        content = content.strip()
+        if not content or content == ".":
+            return ""
+        if content.startswith("\\"):
+            return LatexParser(content, self.fonts, self.size).parse().debug_text()
+        return content
 
     def _parse_unknown_command(self, name: str) -> Box:
         args: list[Box] = []
@@ -1276,6 +1301,21 @@ class LatexParser:
             numerator = self._parse_group(0.8)
             denominator = self._parse_group(0.8)
             return FractionBox(numerator, denominator, max(5, self.size // 10))
+        if name == "genfrac":
+            left = self._delimiter_text_from_group_content(self._read_group_text())
+            right = self._delimiter_text_from_group_content(self._read_group_text())
+            self._read_group_text()
+            self._read_group_text()
+            numerator = self._parse_group(0.78)
+            denominator = self._parse_group(0.78)
+            fraction = FractionBox(numerator, denominator, max(5, self.size // 10))
+            children: list[Box] = []
+            if left:
+                children.append(TextBox(left, self.fonts, self.size))
+            children.append(fraction)
+            if right:
+                children.append(TextBox(right, self.fonts, self.size))
+            return HBox(children, gap=max(0, self.size // 24))
         if name in {"binom", "dbinom", "tbinom"}:
             upper = self._parse_group(0.78)
             lower = self._parse_group(0.78)
@@ -1293,16 +1333,29 @@ class LatexParser:
             over = self._parse_group(0.62)
             base = self._parse_group(0.92)
             return ScriptBox(base, over, None, limits=True)
+        if name == "stackrel":
+            over = self._parse_group(0.62)
+            base = self._parse_group(0.92)
+            return ScriptBox(base, over, None, limits=True)
         if name == "underset":
             under = self._parse_group(0.62)
             base = self._parse_group(0.92)
             return ScriptBox(base, None, under, limits=True)
+        if name == "raisebox":
+            self._read_group_text()
+            self._skip_optional()
+            self._skip_optional()
+            return self._parse_group()
         if name == "overbrace":
             child = self._parse_group(0.9)
             return ScriptBox(child, TextBox("⏞", self.fonts, max(8, int(self.size * 0.7))), None, limits=True)
         if name == "underbrace":
             child = self._parse_group(0.9)
             return ScriptBox(child, None, TextBox("⏟", self.fonts, max(8, int(self.size * 0.7))), limits=True)
+        if name == "hdotsfor":
+            count_text = self._read_group_text().strip()
+            count = int(count_text) if count_text.isdigit() else 1
+            return TextBox("⋯" * max(1, min(count, 12)), self.fonts, self.size)
         if name in {"pmod", "pod", "mod", "bmod"}:
             content = self._parse_group(0.82) if name in {"pmod", "pod"} else TextBox("mod", self.fonts, max(8, int(self.size * 0.86)))
             if name == "pmod":

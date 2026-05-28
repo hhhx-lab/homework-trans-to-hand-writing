@@ -190,12 +190,23 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\(?:mbox|hbox)\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\(?:boxed|fbox)\s*\{([^{}]*)\}", r"[\1]", text)
     text = re.sub(
+        r"\\genfrac\s*\{((?:\\[{}]|[^{}])*)\}\s*\{((?:\\[{}]|[^{}])*)\}\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{([^{}]*)\}\s*\{([^{}]*)\}",
+        lambda match: (
+            match.group(1).replace("\\{", "{").replace("\\}", "}")
+            + f"({match.group(3)})/({match.group(4)})"
+            + match.group(2).replace("\\{", "{").replace("\\}", "}")
+        ),
+        text,
+    )
+    text = re.sub(r"\\raisebox\s*\{[^{}]*\}(?:\s*\[[^\]]*\]){0,2}\s*\{([^{}]*)\}", r"\1", text)
+    text = re.sub(r"\\hdotsfor\s*\{(\d+)\}", lambda match: "⋯" * max(1, min(int(match.group(1)), 12)), text)
+    text = re.sub(
         r"\\(?:cancel|bcancel|xcancel|sout|overparen|underparen|overleftarrow|underleftarrow|underrightarrow)\s*\{([^{}]*)\}",
         r"\1",
         text,
     )
     text = re.sub(
-        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathscr|mathds|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|bm|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
+        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathscr|mathds|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|bm|operatorname\*?|mathop\*?|mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|smash|rlap|llap|mathclap|text)\s*\{([^{}]*)\}",
         r"\1",
         text,
     )
@@ -207,7 +218,7 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\breve\s*\{([^{}]+)\}", r"˘\1", text)
     text = re.sub(r"\\check\s*\{([^{}]+)\}", r"ˇ\1", text)
     text = re.sub(r"\\mathring\s*\{([^{}]+)\}", r"˚\1", text)
-    text = re.sub(r"\\stackrel\s*\{[^{}]*\}\s*\{([^{}]+)\}", r"\1", text)
+    text = re.sub(r"\\stackrel\s*\{([^{}]*)\}\s*\{([^{}]+)\}", r"\2^\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = text.replace("&", " ")
     text = text.replace("\\\\", " ")

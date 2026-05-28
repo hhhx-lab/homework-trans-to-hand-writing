@@ -267,6 +267,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("ϖ", "ς", "ϱ", "↼", "⇌", "≦", "⪅", "⋃", "•", "□", "arcsin", "x", "y"):
             self.assertIn(token, debug_text)
 
+    def test_structural_latex_helpers_preserve_content_without_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"\stackrel{def}{=}+\genfrac{[}{]}{0pt}{}{a+b}{c+d}+"
+            r"\genfrac{\{}{\}}{0pt}{}{n}{k}+"
+            r"\mathrel{R}+\smash{x}+\raisebox{1ex}{y}+"
+            r"\begin{pmatrix}\hdotsfor{3}\\a&b&c\end{pmatrix}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|stackrel|genfrac|mathrel|smash|raisebox|hdotsfor|0pt|1ex",
+        )
+        for token in ("def", "=", "a+b", "c+d", "n", "k", "R", "x", "y", "⋯", "a", "b", "c"):
+            self.assertIn(token, debug_text)
+
     def test_modular_phantom_and_text_box_helpers_do_not_render_control_words(self):
         debug_text = latex_to_debug_text(
             r"\limsup_{n\to\infty}a_n+\liminf_{n\to\infty}b_n+"
@@ -355,6 +370,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|bigcup|leqq|varpi|varsigma")
         for token in ("题目", "A", "⋃", "B", "且", "≦", "另有", "ϖ", "ς"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_structural_helpers_are_wrapped_and_rendered(self):
+        markdown = r"题目 \stackrel{def}{=} 且 \mathrel{R} 结束。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$\stackrel{def}{=}$", normalized)
+        self.assertIn(r"$\mathrel{R}$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|stackrel|mathrel")
+        for token in ("题目", "def", "=", "且", "R", "结束"):
             self.assertIn(token, debug_text)
 
     def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):
