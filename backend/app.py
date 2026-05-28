@@ -587,10 +587,7 @@ def normalize_output_format(data: dict[str, Any]) -> str:
 
 MATH_LIKE_CONTENT_RE = re.compile(
     r"(?<!\\)\$|\\\(|\\\[|"
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|sum|prod|int|iint|iiint|lim|binom|"
-    r"overset|underset|begin|left|right|operatorname|mathrm|mathbf|mathbb|"
-    r"text|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|"
-    r"leq|geq|neq|approx|infty|cdot|times|iff|mapsto)\b|"
+    r"\\[A-Za-z]+|\\[{}_^~'`\"|]|"
     r"[_^]\s*(?:\{|[A-Za-z0-9])"
 )
 

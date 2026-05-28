@@ -136,6 +136,9 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
 
         self.assertTrue(should_render_with_markdown_renderer("plain", r"题目 \dfrac{a}{b}"))
         self.assertTrue(should_render_with_markdown_renderer("plain", r"题目 $x+1$"))
+        self.assertTrue(should_render_with_markdown_renderer("plain", r"a\equiv b\pmod{n}"))
+        self.assertTrue(should_render_with_markdown_renderer("plain", r"x\perp y,\ \angle ABC"))
+        self.assertTrue(should_render_with_markdown_renderer("plain", r"\therefore x\ne 0"))
         self.assertFalse(should_render_with_markdown_renderer("plain", "纯文本内容"))
 
     def test_renderer_places_text_on_first_ruled_line_band(self):
