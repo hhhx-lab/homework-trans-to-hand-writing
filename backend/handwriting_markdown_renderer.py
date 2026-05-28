@@ -1737,10 +1737,10 @@ def markdown_render_debug_text(markdown: str, font_path: Path | None = None, siz
     return "\n".join(parts)
 
 
-def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int) -> list[HBox]:
+def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int, max_height: int | None = None) -> list[HBox]:
     layout_boxes: list[Box] = []
     for box in boxes:
-        layout_boxes.extend(_split_layout_box(box, available_width))
+        layout_boxes.extend(_split_layout_box(box, available_width, max_height))
     lines: list[list[Box]] = []
     current: list[Box] = []
     width = 0
@@ -1758,13 +1758,24 @@ def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int) ->
     return [HBox(line, gap=word_spacing) for line in lines]
 
 
-def _split_layout_box(box: Box, available_width: int) -> list[Box]:
-    if box.width <= available_width:
+def _split_layout_box(box: Box, available_width: int, max_height: int | None = None) -> list[Box]:
+    height_fits = max_height is None or box.height <= max_height
+    if box.width <= available_width and height_fits:
         return [box]
+    if max_height is not None and box.height > max_height:
+        return [
+            ScaledBox(
+                box,
+                min(
+                    max(1, available_width) / max(1, box.width),
+                    max(1, max_height) / max(1, box.height),
+                ),
+            )
+        ]
     if isinstance(box, HBox) and box.children:
         split: list[Box] = []
         for child in box.children:
-            split.extend(_split_layout_box(child, available_width))
+            split.extend(_split_layout_box(child, available_width, max_height))
         return split
     return [ScaledBox(box, max(1, available_width) / max(1, box.width))]
 
@@ -1829,12 +1840,12 @@ def render_markdown_handwriting(
                         ),
                     )
                 if box.width > available_width:
-                    for wrapped in _layout_inline([box], available_width, config.word_spacing):
+                    for wrapped in _layout_inline([box], available_width, config.word_spacing, max_line_height):
                         draw_line(wrapped, extra_gap=config.line_spacing // 2, center=True)
                 else:
                     draw_line(box, extra_gap=config.line_spacing // 2, center=True)
             continue
-        for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing):
+        for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing, max_line_height):
             draw_line(line)
 
     pages.append(page)

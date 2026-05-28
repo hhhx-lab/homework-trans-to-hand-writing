@@ -527,6 +527,32 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIsNotNone(ink_bbox)
         self.assertLessEqual(ink_bbox[3], background.height - config.bottom_margin)
 
+    def test_tall_inline_formula_stays_above_bottom_margin(self):
+        background = Image.new("RGB", (500, 260), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 86)
+        config = HandwritingRenderConfig(
+            line_spacing=70,
+            font_size=86,
+            left_margin=50,
+            top_margin=40,
+            right_margin=50,
+            bottom_margin=40,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+        )
+        page = render_markdown_handwriting(
+            r"内联 $\frac{\frac{a}{b}}{\frac{c}{d}}$ 结束",
+            background,
+            font,
+            config,
+        )[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertLessEqual(ink_bbox[3], background.height - config.bottom_margin)
+
     def test_missing_math_symbol_glyphs_use_fallback_font(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)
         self.assertIsNone(font.getmask("↔").getbbox())
