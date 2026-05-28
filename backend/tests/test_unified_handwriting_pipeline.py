@@ -1119,6 +1119,35 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             self.assertLessEqual(ink_bbox[2], background.width - right_margin)
             self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
 
+    def test_plain_text_lines_use_one_ruled_line_even_with_large_font(self):
+        background = Image.new("RGB", (520, 360), "white")
+        top_margin = 40
+        line_spacing = 56
+        left_margin = 50
+        right_margin = 50
+        bottom_margin = 40
+        draw = ImageDraw.Draw(background)
+        for y in range(top_margin + line_spacing, background.height - bottom_margin + 1, line_spacing):
+            draw.line((left_margin, y, background.width - right_margin, y), fill="black")
+        font = ImageFont.truetype(str(FONT_PATH), 86)
+        config = HandwritingRenderConfig(
+            line_spacing=line_spacing,
+            font_size=86,
+            left_margin=left_margin,
+            top_margin=top_margin,
+            right_margin=right_margin,
+            bottom_margin=bottom_margin,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+        )
+        page = render_markdown_handwriting("ABC123\n\nDEF456", background, font, config)[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertLessEqual(ink_bbox[3], top_margin + line_spacing * 3)
+
     def test_markdown_renderer_preserves_line_leading_math_operators(self):
         markdown = "\n".join(
             [

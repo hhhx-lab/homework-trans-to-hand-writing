@@ -1999,6 +1999,16 @@ def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int, ma
     return [HBox(line, gap=word_spacing) for line in lines]
 
 
+def _is_plain_text_box(box: Box) -> bool:
+    if isinstance(box, TextBox):
+        return True
+    if isinstance(box, ScaledBox):
+        return _is_plain_text_box(box.child)
+    if isinstance(box, HBox):
+        return all(_is_plain_text_box(child) for child in box.children)
+    return False
+
+
 def _split_layout_box(box: Box, available_width: int, max_height: int | None = None) -> list[Box]:
     height_fits = max_height is None or box.height <= max_height
     if box.width <= available_width and height_fits:
@@ -2053,9 +2063,15 @@ def render_markdown_handwriting(
         ctx = DrawContext(page, draw, fonts, config, rand)
         baseline_y = first_line_y
 
-    def draw_line(line: Box, extra_gap: int = 0, center: bool = False) -> None:
+    def draw_line(line: Box, extra_gap: int = 0, center: bool = False, allow_multi_line: bool = True) -> None:
         nonlocal baseline_y
-        step_count = max(1, math.ceil((line.height + extra_gap) / max(1, config.line_spacing)))
+        if not allow_multi_line and line.height > config.line_spacing:
+            line = ScaledBox(line, max(1, config.line_spacing) / max(1, line.height))
+        step_count = (
+            max(1, math.ceil((line.height + extra_gap) / max(1, config.line_spacing)))
+            if allow_multi_line
+            else 1
+        )
         line_height = step_count * config.line_spacing
         y = max(min_y, baseline_y - line.baseline)
         if y + line.height > max_y and baseline_y > first_line_y:
@@ -2090,7 +2106,7 @@ def render_markdown_handwriting(
                     draw_line(box, extra_gap=config.line_spacing // 2, center=True)
             continue
         for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing, max_line_height):
-            draw_line(line)
+            draw_line(line, allow_multi_line=not _is_plain_text_box(line))
 
     pages.append(page)
     return pages
