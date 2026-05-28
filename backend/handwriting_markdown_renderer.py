@@ -230,6 +230,11 @@ COMMAND_FALLBACKS = {
     '"': "¨",
     "vec": "→",
     "overrightarrow": "→",
+    "overleftarrow": "←",
+    "overparen": "⌒",
+    "underparen": "⌣",
+    "underleftarrow": "_←",
+    "underrightarrow": "_→",
     "dot": "·",
     "ddot": "··",
 }
@@ -702,8 +707,8 @@ class DecoratedBox(Box):
         self.mark = mark
         self.size = size
         self.pad = max(3, size // 12)
-        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "´", "`", "¨", "·", "··"} else 0
-        extra_bottom = max(4, size // 8) if mark == "_" else 0
+        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "←", "⌒", "´", "`", "¨", "·", "··"} else 0
+        extra_bottom = max(4, size // 8) if mark in {"_", "⌣", "_→", "_←"} else 0
         self.width = child.width + self.pad * 2
         self.height = child.height + extra_top + extra_bottom
         self.baseline = child.baseline + extra_top
@@ -743,11 +748,20 @@ class DecoratedBox(Box):
             cx = child_x + self.child.width // 2
             for offset in (-self.pad // 2, self.pad // 2):
                 ctx.draw.ellipse((cx + offset - stroke, yy - stroke, cx + offset + stroke, yy + stroke), fill=ctx.color())
-        elif self.mark == "→":
+        elif self.mark in {"→", "←"}:
             yy = y + max(1, self.pad)
-            end_x = child_x + self.child.width
-            ctx.hand_line(child_x, yy, end_x, yy + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
-            ctx.hand_polyline([(end_x - self.pad, yy - self.pad // 2), (end_x, yy), (end_x - self.pad, yy + self.pad // 2)], width=stroke, wobble=max(1.0, self.pad / 3))
+            self._draw_arrow(ctx, child_x, yy, child_x + self.child.width, self.mark, stroke)
+        elif self.mark in {"_→", "_←"}:
+            yy = child_y + self.child.height + max(1, self.pad // 2)
+            self._draw_arrow(ctx, child_x, yy, child_x + self.child.width, self.mark[-1], stroke)
+        elif self.mark == "⌒":
+            yy = y + max(1, self.pad)
+            mid = child_x + self.child.width // 2
+            ctx.hand_polyline([(child_x, yy + self.pad), (mid, yy), (child_x + self.child.width, yy + self.pad)], width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "⌣":
+            yy = child_y + self.child.height + max(1, self.pad // 2)
+            mid = child_x + self.child.width // 2
+            ctx.hand_polyline([(child_x, yy), (mid, yy + self.pad), (child_x + self.child.width, yy)], width=stroke, wobble=max(1.0, self.pad / 3))
         elif self.mark in {"·", "··"}:
             yy = y + max(1, self.pad // 2)
             cx = child_x + self.child.width // 2
@@ -755,10 +769,69 @@ class DecoratedBox(Box):
             if self.mark == "··":
                 ctx.draw.ellipse((cx + self.pad - stroke, yy - stroke, cx + self.pad + stroke, yy + stroke), fill=ctx.color())
 
+    def _draw_arrow(self, ctx: DrawContext, start_x: int, y: int, end_x: int, direction: str, stroke: int) -> None:
+        ctx.hand_line(start_x, y, end_x, y + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+        if direction == "←":
+            ctx.hand_polyline([(start_x + self.pad, y - self.pad // 2), (start_x, y), (start_x + self.pad, y + self.pad // 2)], width=stroke, wobble=max(1.0, self.pad / 3))
+        else:
+            ctx.hand_polyline([(end_x - self.pad, y - self.pad // 2), (end_x, y), (end_x - self.pad, y + self.pad // 2)], width=stroke, wobble=max(1.0, self.pad / 3))
+
     def debug_text(self) -> str:
         if self.mark == "_":
             return self.child.debug_text() + "_"
+        if self.mark in {"⌣", "_→", "_←"}:
+            return self.child.debug_text() + self.mark.replace("_", "")
         return self.mark + self.child.debug_text()
+
+
+class BoxedBox(Box):
+    def __init__(self, child: Box, size: int):
+        self.child = child
+        self.pad = max(4, size // 10)
+        self.width = child.width + self.pad * 2
+        self.height = child.height + self.pad * 2
+        self.baseline = child.baseline + self.pad
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        stroke = max(1, self.pad // 3)
+        ctx.hand_line(x, y, x + self.width, y + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+        ctx.hand_line(x + self.width, y, x + self.width, y + self.height, width=stroke, wobble=max(1.0, self.pad / 3))
+        ctx.hand_line(x + self.width, y + self.height, x, y + self.height + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+        ctx.hand_line(x, y + self.height, x, y, width=stroke, wobble=max(1.0, self.pad / 3))
+        with ctx.nested():
+            self.child.draw(ctx, x + self.pad, y + self.pad)
+
+    def debug_text(self) -> str:
+        return f"[{self.child.debug_text()}]"
+
+
+class StrikeBox(Box):
+    def __init__(self, child: Box, style: str, size: int):
+        self.child = child
+        self.style = style
+        self.pad = max(2, size // 18)
+        self.width = child.width + self.pad * 2
+        self.height = child.height + self.pad * 2
+        self.baseline = child.baseline + self.pad
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        with ctx.nested():
+            self.child.draw(ctx, x + self.pad, y + self.pad)
+        stroke = max(1, self.pad // 2)
+        left = x + self.pad
+        right = x + self.pad + self.child.width
+        top = y + self.pad
+        bottom = y + self.pad + self.child.height
+        mid = top + self.child.height // 2
+        if self.style in {"slash", "x"}:
+            ctx.hand_line(left, bottom, right, top, width=stroke, wobble=max(1.0, self.pad / 3))
+        if self.style in {"backslash", "x"}:
+            ctx.hand_line(left, top, right, bottom, width=stroke, wobble=max(1.0, self.pad / 3))
+        if self.style == "horizontal":
+            ctx.hand_line(left, mid, right, mid + ctx.rand.choice([-1, 0, 1]), width=stroke, wobble=max(1.0, self.pad / 3))
+
+    def debug_text(self) -> str:
+        return self.child.debug_text()
 
 
 class LatexParser:
@@ -994,7 +1067,7 @@ class LatexParser:
 
     def _parse_command(self) -> Box:
         name = self._read_command_name()
-        if name in {"left", "right"}:
+        if name in {"left", "right", "middle"}:
             delimiter = self._read_delimiter()
             return TextBox(delimiter, self.fonts, int(self.size * 1.05)) if delimiter else TextBox("", self.fonts, self.size)
         if name in STYLE_COMMANDS:
@@ -1006,6 +1079,15 @@ class LatexParser:
             if name in {"hspace", "vspace"}:
                 self._read_raw_group()
             return TextBox(" ", self.fonts, self.size // 2)
+        if name in {"color", "textcolor"}:
+            self._read_group_text()
+            self._skip_space()
+            return self._parse_group() if self.pos < len(self.text) and self.text[self.pos] == "{" else TextBox("", self.fonts, self.size)
+        if name in {"boxed", "fbox"}:
+            return BoxedBox(self._parse_group(0.9), self.size)
+        if name in {"cancel", "bcancel", "xcancel", "sout"}:
+            styles = {"cancel": "slash", "bcancel": "backslash", "xcancel": "x", "sout": "horizontal"}
+            return StrikeBox(self._parse_group(0.9), styles[name], self.size)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name == "operatorname":

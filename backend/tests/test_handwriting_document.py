@@ -77,6 +77,14 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("sum", "i=1", "j=2", "x→0", "y→1"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_decorated_color_and_cancel_content(self):
+        text = plainify_latex_text(
+            r"\color{red}{x+y}+\boxed{a+b}+\cancel{z}+\overleftarrow{AB}+\left\lbrace x\middle|x>0\right\rbrace"
+        )
+        self.assertNotRegex(text, r"\\|color|boxed|cancel|overleftarrow|middle")
+        for token in ("x+y", "[a+b]", "z", "AB", "{", "|", "x>0", "}"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"

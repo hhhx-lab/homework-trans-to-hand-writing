@@ -181,6 +181,26 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("[[1,2];[3,4]]", "[[a,b];[c,d]]", "[[p,q];[r,s]]"):
             self.assertIn(token, debug_text)
 
+    def test_extended_decorations_and_boxed_content_do_not_render_command_names(self):
+        debug_text = latex_to_debug_text(
+            r"\overparen{AB}+\underparen{CD}+\overleftarrow{EF}+"
+            r"\underleftarrow{GH}+\boxed{a+b}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|overparen|underparen|overleftarrow|underleftarrow|boxed")
+        for token in ("AB", "CD", "EF", "GH", "a+b"):
+            self.assertIn(token, debug_text)
+
+    def test_color_cancel_and_middle_commands_preserve_content_without_control_words(self):
+        debug_text = latex_to_debug_text(
+            r"\color{red}{x+y}+\textcolor{blue}{z}+\cancel{x}+"
+            r"\bcancel{y}+\xcancel{z}+\sout{w}+\left\lbrace x\middle|x>0\right\rbrace",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|color|textcolor|cancel|bcancel|xcancel|sout|middle")
+        for token in ("x+y", "z", "x", "y", "w", "{", "|", "x>0", "}"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

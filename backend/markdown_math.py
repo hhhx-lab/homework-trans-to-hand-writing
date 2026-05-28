@@ -26,7 +26,13 @@ LATEX_COMMAND_NAMES = (
     "operatorname",
     "displaystyle",
     "overrightarrow",
+    "underrightarrow",
+    "underleftarrow",
+    "overleftarrow",
     "smallmatrix",
+    "textcolor",
+    "underparen",
+    "overparen",
     "Rightarrow",
     "Leftarrow",
     "rightarrow",
@@ -67,6 +73,7 @@ LATEX_COMMAND_NAMES = (
     "eqref",
     "label",
     "notag",
+    "middle",
     "mapsto",
     "notin",
     "pmod",
@@ -77,6 +84,13 @@ LATEX_COMMAND_NAMES = (
     "right",
     "left",
     "sqrt",
+    "boxed",
+    "color",
+    "fbox",
+    "sout",
+    "bcancel",
+    "xcancel",
+    "cancel",
     "frac",
     "iiint",
     "prod",
@@ -180,10 +194,11 @@ MATH_RELATION_RE = re.compile(
     r"[=<>≤≥≠≈≡∈∉⊥∥→←⇒⇐↔⇔⊂⊆⊃⊇∝]|"
     r"\\(?:leqslant|geqslant|leq|geq|le|ge|neq|ne|approx|sim|cong|simeq|equiv|"
     r"pmod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
-    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto)(?![A-Za-z])"
+    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|eqref|ref)(?![A-Za-z])"
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
+    r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

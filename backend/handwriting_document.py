@@ -155,6 +155,14 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\(?:label|notag|nonumber)\s*(?:\{[^{}]*\})?", "", text)
     text = re.sub(r"\\substack\s*\{([^{}]*)\}", lambda match: match.group(1).replace("\\\\", " "), text)
     text = re.sub(r"\\begin\s*\{subarray\}\s*\{[^{}]*\}", " ", text)
+    text = re.sub(r"\\(?:color|textcolor)\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", text)
+    text = re.sub(r"\\color\s*\{[^{}]*\}", "", text)
+    text = re.sub(r"\\(?:boxed|fbox)\s*\{([^{}]*)\}", r"[\1]", text)
+    text = re.sub(
+        r"\\(?:cancel|bcancel|xcancel|sout|overparen|underparen|overleftarrow|underleftarrow|underrightarrow)\s*\{([^{}]*)\}",
+        r"\1",
+        text,
+    )
     text = re.sub(
         r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
         r"\1",
@@ -167,7 +175,9 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = text.replace("&", " ")
     text = text.replace("\\\\", " ")
-    text = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)", "", text)
+    text = re.sub(r"\\(?:left|right|middle|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)", "", text)
+    text = _replace_latex_command(text, "lbrace", "@@LBRACE@@")
+    text = _replace_latex_command(text, "rbrace", "@@RBRACE@@")
     text = re.sub(r"\\not\s*\\in(?![A-Za-z])", "∉", text)
     text = re.sub(r"\\pmod\s*\{([^{}]*)\}", r"mod \1", text)
     symbol_replacements = {
@@ -194,6 +204,12 @@ def plainify_latex_text(text: str) -> str:
         "rightarrow": "→",
         "leftarrow": "←",
         "to": "→",
+        "lparen": "(",
+        "rparen": ")",
+        "lbrack": "[",
+        "rbrack": "]",
+        "langle": "〈",
+        "rangle": "〉",
         "infty": "∞",
         "times": "×",
         "cdot": "·",
@@ -221,6 +237,7 @@ def plainify_latex_text(text: str) -> str:
     text = text.replace("\\{", "{").replace("\\}", "}").replace("\\_", "_")
     text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
     text = text.replace("{", "").replace("}", "")
+    text = text.replace("@@LBRACE@@", "{").replace("@@RBRACE@@", "}")
     text = text.replace("~", " ")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
