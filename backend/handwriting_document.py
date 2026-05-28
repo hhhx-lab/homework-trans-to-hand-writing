@@ -388,12 +388,27 @@ def plainify_latex_text(text: str) -> str:
         text,
     )
     text = re.sub(
-        r"\{?([A-Za-z0-9_^\-]+)\}?\s*\\over\s*\{?([A-Za-z0-9_^\-]+)\}?",
+        r"\{?([A-Za-z0-9_^\-]+)\}?\s*\\over(?![A-Za-z])\s*\{?([A-Za-z0-9_^\-]+)\}?",
         r"(\1)/(\2)",
         text,
     )
     text = re.sub(
-        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\(?:atop|brack|brace|above)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\above(?![A-Za-z])\s+\S+\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
+        text,
+    )
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\abovewithdelims(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\S+\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
+        text,
+    )
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\(?:overwithdelims|atopwithdelims)(?![A-Za-z])\s*(?:\\[A-Za-z]+|.)\s*(?:\\[A-Za-z]+|.)\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
+        lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
+        text,
+    )
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-+\s]+?)\}?\s*\\(?:atop|brack|brace)(?![A-Za-z])\s*\{?([A-Za-z0-9_^\-+\s]+?)\}?(?=$|[+,\s])",
         lambda match: f"{match.group(1).strip()} {match.group(2).strip()}",
         text,
     )

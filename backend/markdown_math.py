@@ -128,6 +128,9 @@ LATEX_COMMAND_NAMES = (
     "textbf",
     "aleph",
     "atop",
+    "overwithdelims",
+    "atopwithdelims",
+    "abovewithdelims",
     "eqref",
     "hbar",
     "label",
@@ -363,7 +366,8 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
     r"hline|cline|hdotsfor|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
-    r"stackrel|buildrel|genfrac|mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
+    r"stackrel|buildrel|genfrac|overwithdelims|atopwithdelims|abovewithdelims|"
+    r"mathrel|mathbin|mathord|mathopen|mathclose|mathpunct|mathinner|"
     r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
     r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
@@ -480,6 +484,12 @@ def _wrap_bare_latex_spans(text: str) -> str:
                 pos = buildrel_match.end()
                 continue
         start = match.start()
+        matched_command = match.group(0)[1:]
+        if matched_command in {"above", "overwithdelims", "atopwithdelims", "abovewithdelims"}:
+            while start > pos and text[start - 1].isspace():
+                start -= 1
+            while start > pos and not text[start - 1].isspace() and _is_bare_math_char(text[start - 1]):
+                start -= 1
         while start > pos and not text[start - 1].isspace() and _is_bare_math_char(text[start - 1]):
             start -= 1
         end = _bare_math_span_end(text, match.end())

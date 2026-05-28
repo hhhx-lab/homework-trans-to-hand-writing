@@ -1023,20 +1023,57 @@ class LatexParser:
                 self.pos += 1
                 break
             infix_name = None
-            for candidate in ("over", "choose", "atop", "brack", "brace"):
+            for candidate in (
+                "overwithdelims",
+                "atopwithdelims",
+                "abovewithdelims",
+                "over",
+                "choose",
+                "above",
+                "atop",
+                "brack",
+                "brace",
+            ):
                 if self._consume_named_command(candidate):
                     infix_name = candidate
                     break
             if infix_name:
                 while children and isinstance(children[-1], TextBox) and children[-1].text.isspace():
                     children.pop()
+                left_delimiter = ""
+                right_delimiter = ""
+                if infix_name in {"overwithdelims", "atopwithdelims", "abovewithdelims"}:
+                    left_delimiter = self._read_delimiter()
+                    right_delimiter = self._read_delimiter()
+                thickness = ""
+                if infix_name in {"above", "abovewithdelims"}:
+                    thickness = self._read_dimension_token()
                 self._skip_space()
                 numerator = HBox(children, gap=max(0, self.size // 18)) if children else TextBox(" ", self.fonts, self.size)
                 denominator = self._parse_until(terminator)
-                if infix_name == "over":
-                    return FractionBox(numerator, denominator, max(5, self.size // 10))
+                if infix_name in {"over", "overwithdelims"}:
+                    return self._wrap_with_delimiters(
+                        FractionBox(numerator, denominator, max(5, self.size // 10)),
+                        left_delimiter,
+                        right_delimiter,
+                    )
+                if infix_name in {"above", "abovewithdelims"}:
+                    if thickness.strip().startswith("0"):
+                        stacked = MatrixBox([[numerator], [denominator]], "substack", self.size, self.fonts)
+                        return self._wrap_with_delimiters(stacked, left_delimiter, right_delimiter)
+                    return self._wrap_with_delimiters(
+                        FractionBox(numerator, denominator, max(5, self.size // 10)),
+                        left_delimiter,
+                        right_delimiter,
+                    )
                 if infix_name == "choose":
                     return BinomialBox(numerator, denominator, self.size, self.fonts)
+                if infix_name == "atopwithdelims":
+                    return self._wrap_with_delimiters(
+                        MatrixBox([[numerator], [denominator]], "substack", self.size, self.fonts),
+                        left_delimiter,
+                        right_delimiter,
+                    )
                 if infix_name == "brack":
                     return MatrixBox([[numerator], [denominator]], "bmatrix", self.size, self.fonts)
                 if infix_name == "brace":
@@ -1209,6 +1246,22 @@ class LatexParser:
         delimiter = self.text[self.pos]
         self.pos += 1
         return "" if delimiter == "." else delimiter
+
+    def _read_dimension_token(self) -> str:
+        self._skip_space()
+        start = self.pos
+        while self.pos < len(self.text) and not self.text[self.pos].isspace():
+            self.pos += 1
+        return self.text[start:self.pos]
+
+    def _wrap_with_delimiters(self, box: Box, left: str, right: str) -> Box:
+        children: list[Box] = []
+        if left:
+            children.append(TextBox(left, self.fonts, self.size))
+        children.append(box)
+        if right:
+            children.append(TextBox(right, self.fonts, self.size))
+        return HBox(children, gap=max(0, self.size // 24)) if len(children) > 1 else box
 
     def _read_until_top_level_command(self, name: str) -> str | None:
         marker = f"\\{name}"

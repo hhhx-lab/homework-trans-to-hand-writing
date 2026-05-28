@@ -66,6 +66,12 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("C(n,k)", "a", "b"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_legacy_dimension_infix_content(self):
+        text = plainify_latex_text(r"a \above 0pt b+c \overwithdelims() d+n \atopwithdelims[] k")
+        self.assertNotRegex(text, r"\\|above|overwithdelims|atopwithdelims|0pt")
+        for token in ("a", "b", "c", "d", "n", "k"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_additional_common_symbols(self):
         text = plainify_latex_text(
             r"\varpi+\varsigma+\varrho+A\bigcup B+a\leftharpoonup b+a\leqq b+\bullet+\arcsin x"

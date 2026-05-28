@@ -141,6 +141,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("a", "b", "c", "d", "e", "f"):
             self.assertIn(token, stack_text)
 
+    def test_legacy_dimension_infix_commands_do_not_render_control_words(self):
+        above_text = latex_to_debug_text(r"a \above 0pt b", FONT_PATH)
+        over_delims_text = latex_to_debug_text(r"c \overwithdelims() d", FONT_PATH)
+        atop_delims_text = latex_to_debug_text(r"n \atopwithdelims[] k", FONT_PATH)
+        debug_text = above_text + over_delims_text + atop_delims_text
+        self.assertNotRegex(debug_text, r"\\|above|overwithdelims|atopwithdelims|0pt")
+        for token in ("a", "b", "c", "d", "n", "k"):
+            self.assertIn(token, debug_text)
+
     def test_text_command_preserves_inner_spaces(self):
         self.assertEqual("if x>0", latex_to_debug_text(r"\text{if }x>0", FONT_PATH))
 
@@ -404,6 +413,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|buildrel|over")
         for token in ("题目", "def", "=", "结束"):
+            self.assertIn(token, debug_text)
+
+    def test_bare_legacy_dimension_infix_commands_are_wrapped_and_rendered(self):
+        markdown = r"题目 a \above 0pt b 和 n \atopwithdelims[] k 结束。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$a \above 0pt b$", normalized)
+        self.assertIn(r"$n \atopwithdelims[] k$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|above|atopwithdelims|0pt")
+        for token in ("题目", "a", "b", "和", "n", "k", "结束"):
             self.assertIn(token, debug_text)
 
     def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):
