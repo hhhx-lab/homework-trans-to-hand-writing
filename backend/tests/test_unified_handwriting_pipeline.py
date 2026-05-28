@@ -297,6 +297,14 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             extracted = extract_source_to_markdown(docx)["markdown"]
             self.assertIn("Word 文本", extracted)
 
+            formula_docx = tmp_dir / "formula.docx"
+            formula_docx.write_bytes(editable_docx_bytes(r"Word 公式 $\frac{a_1}{b^2}+\sum_{i=1}^{n}x_i$ 完成"))
+            formula_extracted = extract_source_to_markdown(formula_docx)["markdown"]
+            self.assertIn("Word 公式", formula_extracted)
+            self.assertIn(r"\frac", formula_extracted)
+            self.assertIn(r"\sum", formula_extracted)
+            self.assertIn("完成", formula_extracted)
+
     def test_safe_source_filename_keeps_suffix_for_chinese_names(self):
         self.assertEqual(safe_source_filename("随机过程三次作业答案.pdf", ".pdf"), "source.pdf")
         self.assertEqual(safe_source_filename("作业答案.docx", ".docx", "draft"), "draft.docx")
