@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import re
 import shutil
 import subprocess
@@ -1036,7 +1037,7 @@ def _flush_paragraph(result: list[str], paragraph: list[str]) -> None:
 
 
 def normalize_math_markdown(markdown: str) -> str:
-    markdown = FRONT_MATTER_RE.sub("", markdown or "")
+    markdown = FRONT_MATTER_RE.sub("", html.unescape(markdown or ""))
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
     markdown = DISPLAY_BRACKET_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)
     markdown = DISPLAY_DOLLAR_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)

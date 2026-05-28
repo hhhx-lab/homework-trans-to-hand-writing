@@ -1176,7 +1176,7 @@ class LatexParser:
             return self._parse_command()
         if ch == "&":
             self.pos += 1
-            return TextBox(" ", self.fonts, self.size // 2)
+            return TextBox("&", self.fonts, self.size)
         self.pos += 1
         return TextBox(ch, self.fonts, self.size)
 

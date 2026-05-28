@@ -178,6 +178,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("[图片:<img src=\"b.png\" alt=\"图2\">]", debug_text)
         self.assertIn("x^2+1", debug_text)
 
+    def test_markdown_normalizer_decodes_html_entities_before_handwriting_render(self):
+        markdown = "不等式 a &lt; b &amp;&amp; c &gt; d，公式 $x &lt; y &amp; y &gt; z$。"
+        normalized = normalize_math_markdown(markdown)
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        compact_text = re.sub(r"\s+", "", debug_text)
+        self.assertIn("a<b&&c>d", compact_text)
+        self.assertIn("x<y&y>z", compact_text)
+        self.assertNotRegex(debug_text, r"&lt;|&gt;|&amp;")
+
     def test_unknown_latex_commands_remain_visible_without_raw_latex(self):
         debug_text = latex_to_debug_text(r"\unknowncmd{x}+\overset{a}{b}", FONT_PATH)
         self.assertNotIn("\\", debug_text)
