@@ -54,6 +54,12 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("a", "≡", "b", "mod", "n", "⊥", "∥", "∴", "≠", "∵", "≤", "∉", "B"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_handles_norm_and_infix_over(self):
+        text = plainify_latex_text(r"\lVert v\rVert+\Vert x\Vert+a \over b+\text{if }x>0")
+        self.assertNotRegex(text, r"\\|lVert|rVert|Vert|over")
+        for token in ("‖v‖", "‖x‖", "(a)/(b)", "if x>0"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"

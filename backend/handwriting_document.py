@@ -159,6 +159,9 @@ def plainify_latex_text(text: str) -> str:
         "equiv": "≡",
         "notin": "∉",
         "in": "∈",
+        "lVert": "‖",
+        "rVert": "‖",
+        "Vert": "‖",
         "perp": "⊥",
         "parallel": "∥",
         "angle": "∠",
@@ -181,6 +184,13 @@ def plainify_latex_text(text: str) -> str:
         text = _replace_latex_command(text, source, target)
     for name, replacement in GREEK_REPLACEMENTS.items():
         text = _replace_latex_command(text, name, replacement)
+    text = re.sub(r"‖\s+", "‖", text)
+    text = re.sub(r"\s+‖", "‖", text)
+    text = re.sub(
+        r"\{?([A-Za-z0-9_^\-]+)\}?\s*\\over\s*\{?([A-Za-z0-9_^\-]+)\}?",
+        r"(\1)/(\2)",
+        text,
+    )
     text = re.sub(r"\\[,;:! ]", " ", text)
     text = text.replace("\\{", "{").replace("\\}", "}").replace("\\_", "_")
     text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
