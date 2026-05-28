@@ -7,7 +7,7 @@ import pypandoc
 from werkzeug.utils import secure_filename
 
 from markdown_math import normalize_math_markdown
-from mineru_adapter import extract_pdf_to_markdown
+from mineru_adapter import MinerUConfigError, MinerUExtractionError, extract_pdf_to_markdown, user_facing_mineru_error
 
 
 SUPPORTED_SOURCE_SUFFIXES = {".pdf", ".docx", ".doc", ".md", ".markdown", ".txt", ".rtf"}
@@ -43,6 +43,52 @@ def _pandoc_to_markdown(path: Path, from_format: str | None = None) -> str:
     return pypandoc.convert_file(str(path), **kwargs).replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _read_pdf_text_layer_with_pymupdf(path: Path) -> str:
+    import fitz
+
+    parts: list[str] = []
+    with fitz.open(path) as doc:
+        for page_index, page in enumerate(doc, start=1):
+            text = page.get_text(sort=True).strip()
+            if not text:
+                continue
+            if doc.page_count > 1:
+                parts.extend([f"## 第{page_index}页", "", text, ""])
+            else:
+                parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _read_pdf_text_layer_with_pypdf2(path: Path) -> str:
+    import PyPDF2
+
+    parts: list[str] = []
+    with path.open("rb") as pdf_file_obj:
+        pdf_reader = PyPDF2.PdfReader(pdf_file_obj)
+        for page_index, page in enumerate(pdf_reader.pages, start=1):
+            text = (page.extract_text() or "").strip()
+            if not text:
+                continue
+            if len(pdf_reader.pages) > 1:
+                parts.extend([f"## 第{page_index}页", "", text, ""])
+            else:
+                parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _read_pdf_text_layer(path: Path) -> str:
+    try:
+        text = _read_pdf_text_layer_with_pymupdf(path)
+        if text.strip():
+            return text
+    except Exception:
+        pass
+    try:
+        return _read_pdf_text_layer_with_pypdf2(path)
+    except Exception:
+        return ""
+
+
 def extract_source_to_markdown(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_SOURCE_SUFFIXES:
@@ -68,8 +114,22 @@ def extract_source_to_markdown(path: Path) -> dict[str, Any]:
         return {"markdown": normalize_math_markdown(_pandoc_to_markdown(path)), "source": "pandoc_docx", "warnings": []}
 
     if suffix == ".pdf":
-        result = extract_pdf_to_markdown(path)
-        result["markdown"] = normalize_math_markdown(result["markdown"])
-        return result
+        try:
+            result = extract_pdf_to_markdown(path)
+            result["markdown"] = normalize_math_markdown(result["markdown"])
+            return result
+        except (MinerUConfigError, MinerUExtractionError) as e:
+            text_layer = _read_pdf_text_layer(path)
+            if not text_layer.strip():
+                raise
+            return {
+                "markdown": normalize_math_markdown(text_layer),
+                "source": "pymupdf_pdf_fallback",
+                "warnings": [
+                    user_facing_mineru_error(e),
+                    "已改用 PDF 文本层提取；扫描件或图片公式仍建议配置 MinerU/OCR",
+                ],
+                "metadata": {"fallback": "pdf_text_layer"},
+            }
 
     raise ValueError("Unsupported source file type")

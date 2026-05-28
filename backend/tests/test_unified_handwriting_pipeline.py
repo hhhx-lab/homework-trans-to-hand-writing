@@ -552,7 +552,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
                 result = extract_textfileprocess_content(pdf)
 
-        self.assertEqual(result["source"], "pypdf2_pdf_fallback")
+        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
         compact_text = re.sub(r"\s+", "", result["text"])
         self.assertIn("PDF题1", compact_text)
         self.assertIn("中文ABC123", compact_text)
@@ -610,7 +610,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
                 result = extract_textfileprocess_content(pdf)
 
-        self.assertEqual(result["source"], "pypdf2_pdf_fallback")
+        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
         self.assertIn("$", result["text"])
         for raw in (
             r"\degree",
@@ -632,6 +632,42 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
                 text_tokens=page_data["text_tokens"],
                 debug_tokens=page_data["debug_tokens"],
             )
+
+    def test_source_extract_pdf_uses_text_layer_when_mineru_unavailable(self):
+        import fitz
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "source_text_layer.pdf"
+            doc = fitz.open()
+            page = doc.new_page(width=595, height=842)
+            page.insert_text(
+                (72, 96),
+                r"前端PDF 中文ABC123 +-*/=<> a\times b \sin x A\setminus B \frac{a_1}{b^2}",
+                fontsize=12,
+                fontname="handfont",
+                fontfile=str(FONT_PATH),
+            )
+            doc.save(pdf)
+            doc.close()
+
+            with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+                result = extract_source_to_markdown(pdf)
+
+        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
+        self.assertEqual(result["metadata"]["fallback"], "pdf_text_layer")
+        self.assertTrue(any("MinerU 尚未配置" in warning for warning in result["warnings"]))
+        self.assertTrue(any("PDF 文本层提取" in warning for warning in result["warnings"]))
+        markdown = result["markdown"]
+        self.assertIn("$", markdown)
+        self.assertNotIn(r"\setminus", markdown)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        assert_semantic_tokens_preserved(
+            self,
+            debug_text,
+            text_tokens=("前端PDF", "中文ABC123", "+-*/=<>"),
+            debug_tokens=("a×b", "sinx", "A∖B", "(a_1)/(b^2)"),
+            forbidden_pattern=r"\\|setminus|times|frac",
+        )
 
     def test_raw_latex_commands_in_text_are_rendered_as_math(self):
         debug_text = markdown_render_debug_text(
