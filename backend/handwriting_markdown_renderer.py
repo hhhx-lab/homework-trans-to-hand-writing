@@ -154,6 +154,12 @@ SYMBOLS = {
     "cos": "cos",
     "tan": "tan",
     "log": "log",
+    "Re": "ℜ",
+    "Im": "ℑ",
+    "ell": "ℓ",
+    "hbar": "ℏ",
+    "aleph": "ℵ",
+    "wp": "℘",
 }
 
 BIG_OPERATORS = {"sum": "∑", "int": "∫", "iint": "∬", "iiint": "∭", "prod": "∏", "lim": "lim"}
@@ -191,11 +197,14 @@ GROUP_WRAPPERS = {
     "mathrm",
     "mathbf",
     "mathbb",
+    "mathscr",
+    "mathds",
     "mathcal",
     "mathfrak",
     "mathsf",
     "mathtt",
     "mathit",
+    "bm",
     "operatorname",
     "text",
     "textrm",

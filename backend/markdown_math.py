@@ -61,7 +61,9 @@ LATEX_COMMAND_NAMES = (
     "rVert",
     "Vert",
     "mathfrak",
+    "mathscr",
     "mathcal",
+    "mathds",
     "mathbb",
     "mathrm",
     "mathbf",
@@ -71,8 +73,11 @@ LATEX_COMMAND_NAMES = (
     "mathit",
     "textrm",
     "textbf",
+    "aleph",
     "eqref",
+    "hbar",
     "label",
+    "ell",
     "notag",
     "middle",
     "multirow",
@@ -194,6 +199,10 @@ LATEX_COMMAND_NAMES = (
     "pm",
     "Pr",
     "ln",
+    "bm",
+    "Re",
+    "Im",
+    "wp",
 )
 LATEX_NAMED_COMMAND_RE = re.compile(r"\\(?:" + "|".join(LATEX_COMMAND_NAMES) + r")(?![A-Za-z])")
 LATEX_RESIDUAL_RE = re.compile(r"\\(?:[A-Za-z]+|[,;:! ]|[{}_^~'\"`|])|(?<!\\)\$")
@@ -208,7 +217,7 @@ MATH_RELATION_RE = re.compile(
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
-    r"hline|cline|acute|grave|breve|check|mathring|eqref|ref)(?![A-Za-z])"
+    r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

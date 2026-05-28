@@ -94,6 +94,12 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("a", "b", "c+d", "´x", "˘z"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_font_wrappers_and_named_symbol_content(self):
+        text = plainify_latex_text(r"\mathscr{F}+\mathds{1}+\bm{x}+\Re z+\Im z+\ell+\hbar")
+        self.assertNotRegex(text, r"\\|mathscr|mathds|bm|Re|Im|ell|hbar")
+        for token in ("F", "1", "x", "ℜ", "z", "ℑ", "ℓ", "ℏ"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"

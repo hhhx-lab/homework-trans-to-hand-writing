@@ -167,7 +167,7 @@ def plainify_latex_text(text: str) -> str:
         text,
     )
     text = re.sub(
-        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
+        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathscr|mathds|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|bm|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
         r"\1",
         text,
     )
@@ -218,6 +218,12 @@ def plainify_latex_text(text: str) -> str:
         "rbrack": "]",
         "langle": "〈",
         "rangle": "〉",
+        "Re": "ℜ",
+        "Im": "ℑ",
+        "ell": "ℓ",
+        "hbar": "ℏ",
+        "aleph": "ℵ",
+        "wp": "℘",
         "infty": "∞",
         "times": "×",
         "cdot": "·",

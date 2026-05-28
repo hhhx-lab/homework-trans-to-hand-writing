@@ -216,6 +216,18 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("´x", "`y", "˘z", "ˇw", "˚A"):
             self.assertIn(token, debug_text)
 
+    def test_extra_font_wrappers_do_not_render_command_names(self):
+        debug_text = latex_to_debug_text(r"\mathscr{F}+\mathds{1}+\bm{x}+\boldsymbol{\alpha}", FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|mathscr|mathds|bm|boldsymbol")
+        for token in ("F", "1", "x", "α"):
+            self.assertIn(token, debug_text)
+
+    def test_common_named_math_symbols_render_as_symbols(self):
+        debug_text = latex_to_debug_text(r"\Re z+\Im z+\ell+\hbar+\aleph+\wp", FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|Re|Im|ell|hbar|aleph|wp")
+        for token in ("ℜ", "z", "ℑ", "ℓ", "ℏ", "ℵ", "℘"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)
