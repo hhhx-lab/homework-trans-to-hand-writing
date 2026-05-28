@@ -531,6 +531,11 @@ LATEX_COMMAND_NAMES = (
     "circledast",
     "circledcirc",
     "circleddash",
+    "blacktriangleright",
+    "blacktriangleleft",
+    "trianglerighteq",
+    "trianglelefteq",
+    "maltese",
 )
 LATEX_NAMED_COMMAND_RE = re.compile(r"\\(?:" + "|".join(LATEX_COMMAND_NAMES) + r")(?![A-Za-z])")
 LATEX_RESIDUAL_RE = re.compile(r"\\(?:[A-Za-z]+|[,;:! ]|[{}_^~'\"`|])|(?<!\\)\$")
@@ -554,7 +559,8 @@ MATH_RELATION_RE = re.compile(
     r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|longrightarrow|longleftarrow|longleftrightarrow|"
     r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|longmapsto|implies|"
     r"coloneqq|eqqcolon|triangleq|nexists|complement|curlywedge|curlyvee|Cap|Cup|"
-    r"circledast|circledcirc|circleddash|middle)(?![A-Za-z])"
+    r"circledast|circledcirc|circleddash|blacktriangleright|blacktriangleleft|trianglerighteq|trianglelefteq|maltese|"
+    r"middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|dbinom|tbinom|pmod|partial|xrightarrow|xleftarrow|"
@@ -576,7 +582,8 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|varDelta|varGamma|varTheta|varLambda|varOmega|"
     r"lessdot|gtrdot|lll|ggg|nleqslant|ngeqslant|lneqq|gneqq|subsetneqq|supsetneqq|varsubsetneq|varsupsetneq|"
-    r"nexists|complement|Bbbk|ulcorner|urcorner|llcorner|lrcorner|curlywedge|curlyvee|Cap|Cup|circledast|circledcirc|circleddash|"
+    r"nexists|complement|Bbbk|ulcorner|urcorner|llcorner|lrcorner|curlywedge|curlyvee|Cap|Cup|"
+    r"circledast|circledcirc|circleddash|blacktriangleright|blacktriangleleft|trianglerighteq|trianglelefteq|maltese|"
     r"bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"bmod|pod|over|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|"
@@ -647,6 +654,11 @@ PANDOC_SAFE_SYMBOL_REPLACEMENTS = {
     "circledast": "⊛",
     "circledcirc": "⊚",
     "circleddash": "⊝",
+    "blacktriangleright": "▸",
+    "blacktriangleleft": "◂",
+    "trianglerighteq": "⊵",
+    "trianglelefteq": "⊴",
+    "maltese": "✠",
     "nsmile": "¬⌣",
     "nfrown": "¬⌢",
 }

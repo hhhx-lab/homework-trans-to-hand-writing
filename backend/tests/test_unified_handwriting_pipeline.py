@@ -368,6 +368,20 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"curlywedge|curlyvee|Cap|Cup|circledast|circledcirc|circleddash",
         )
 
+    def test_triangle_and_misc_symbols_render_without_command_words(self):
+        debug_text = latex_to_debug_text(
+            r"a\blacktriangleright b+c\blacktriangleleft d+e\trianglerighteq f+"
+            r"g\trianglelefteq h+\maltese",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("▸", "◂", "⊵", "⊴", "✠"):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(
+            debug_text,
+            r"\\|blacktriangleright|blacktriangleleft|trianglerighteq|trianglelefteq|maltese",
+        )
+
     def test_named_delimiter_commands_render_as_visible_delimiters(self):
         debug_text = latex_to_debug_text(
             r"\lbrace x\in A \rbrace+\lparen y \rparen+\lbrack z \rbrack+"

@@ -258,6 +258,10 @@ SYMBOLS = {
     "angle": "∠",
     "triangle": "△",
     "blacktriangle": "▲",
+    "blacktriangleright": "▸",
+    "blacktriangleleft": "◂",
+    "trianglerighteq": "⊵",
+    "trianglelefteq": "⊴",
     "triangledown": "▽",
     "therefore": "∴",
     "because": "∵",
@@ -341,6 +345,7 @@ SYMBOLS = {
     "circledast": "⊛",
     "circledcirc": "⊚",
     "circleddash": "⊝",
+    "maltese": "✠",
 }
 
 BIG_OPERATORS = {
