@@ -21,6 +21,8 @@ LATEX_COMMAND_NAMES = (
     "scriptscriptstyle",
     "Leftrightarrow",
     "leftrightarrow",
+    "xrightarrow",
+    "xleftarrow",
     "operatorname",
     "displaystyle",
     "overrightarrow",
@@ -37,6 +39,7 @@ LATEX_COMMAND_NAMES = (
     "textstyle",
     "scriptstyle",
     "therefore",
+    "nonumber",
     "parallel",
     "because",
     "partial",
@@ -58,6 +61,9 @@ LATEX_COMMAND_NAMES = (
     "mathit",
     "textrm",
     "textbf",
+    "eqref",
+    "label",
+    "notag",
     "mapsto",
     "notin",
     "pmod",
@@ -74,6 +80,8 @@ LATEX_COMMAND_NAMES = (
     "oint",
     "iint",
     "lim",
+    "ref",
+    "tag",
     "sum",
     "int",
     "forall",
@@ -169,9 +177,11 @@ MATH_RELATION_RE = re.compile(
     r"[=<>≤≥≠≈≡∈∉⊥∥→←⇒⇐↔⇔⊂⊆⊃⊇∝]|"
     r"\\(?:leqslant|geqslant|leq|geq|le|ge|neq|ne|approx|sim|cong|simeq|equiv|"
     r"pmod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
-    r"to|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto)(?![A-Za-z])"
+    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto)(?![A-Za-z])"
 )
-INLINE_STRUCTURAL_COMMAND_RE = re.compile(r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial)(?![A-Za-z])")
+INLINE_STRUCTURAL_COMMAND_RE = re.compile(
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|eqref|ref)(?![A-Za-z])"
+)
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
 TEXT_GROUP_RE = re.compile(r"\\(?:text|textrm|textbf)\s*\{[^{}]*\}")

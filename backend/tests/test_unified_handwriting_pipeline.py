@@ -142,6 +142,24 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("lim_x→0", mathop_text)
         self.assertIn("arg max_x", operator_text)
 
+    def test_optional_root_index_and_extensible_arrow_labels_are_preserved(self):
+        debug_text = latex_to_debug_text(
+            r"\sqrt[3]{x^2+y}+\xrightarrow[n\to0]{m\to\infty} y+\xleftarrow{k} z",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|sqrt|xrightarrow|xleftarrow")
+        for token in ("√[3]", "x^2", "y", "→", "n→0", "m→∞", "←", "k", "z"):
+            self.assertIn(token, debug_text)
+
+    def test_alignment_environment_and_equation_metadata_do_not_render_control_words(self):
+        debug_text = latex_to_debug_text(
+            r"\begin{align}a&=b+c\\d&=e+f\tag{1}\label{eq:one}\end{align}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|begin|end|align|tag|label|&|eq:one")
+        for token in ("a", "=b+c", "d", "=e+f", "(1)"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

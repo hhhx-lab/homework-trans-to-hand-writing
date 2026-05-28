@@ -60,6 +60,15 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("‖v‖", "‖x‖", "(a)/(b)", "if x>0"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
+        text = plainify_latex_text(
+            r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"
+            r"\begin{align}a&=b\tag{1}\label{eq:a}\end{align}"
+        )
+        self.assertNotRegex(text, r"\\|sqrt|xrightarrow|begin|align|tag|label|eq:a|&")
+        for token in ("√[3](x)", "→_n→0^m→∞", "a", "b", "(1)"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"

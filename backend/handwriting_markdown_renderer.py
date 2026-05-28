@@ -157,7 +157,31 @@ SYMBOLS = {
 }
 
 BIG_OPERATORS = {"sum": "∑", "int": "∫", "iint": "∬", "iiint": "∭", "prod": "∏", "lim": "lim"}
-MATRIX_ENVS = {"matrix", "pmatrix", "bmatrix", "vmatrix", "cases", "aligned", "array"}
+MATRIX_ENVS = {
+    "matrix",
+    "pmatrix",
+    "bmatrix",
+    "vmatrix",
+    "cases",
+    "aligned",
+    "alignedat",
+    "alignedat*",
+    "align",
+    "align*",
+    "alignat",
+    "alignat*",
+    "flalign",
+    "flalign*",
+    "split",
+    "gathered",
+    "gather",
+    "gather*",
+    "multline",
+    "multline*",
+    "eqnarray",
+    "eqnarray*",
+    "array",
+}
 STYLE_COMMANDS = {"displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "limits", "nolimits"}
 GROUP_WRAPPERS = {
     "mathrm",
@@ -500,6 +524,26 @@ class SqrtBox(Box):
         return f"√({self.child.debug_text()})"
 
 
+class NthRootBox(Box):
+    def __init__(self, index: Box, child: Box, size: int, fonts: FontCache):
+        self.index = index
+        self.sqrt = SqrtBox(child, size, fonts)
+        self.offset_x = max(4, index.width // 2)
+        self.offset_y = max(3, index.height // 2)
+        self.width = self.offset_x + self.sqrt.width
+        self.height = max(index.height, self.offset_y + self.sqrt.height)
+        self.baseline = self.offset_y + self.sqrt.baseline
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        with ctx.nested():
+            self.index.draw(ctx, x + ctx.rand.choice([-1, 0, 1]), y + ctx.rand.choice([-1, 0, 1]))
+        with ctx.nested():
+            self.sqrt.draw(ctx, x + self.offset_x, y + self.offset_y)
+
+    def debug_text(self) -> str:
+        return f"√[{self.index.debug_text()}]{self.sqrt.child.debug_text()}"
+
+
 class ScriptBox(Box):
     def __init__(self, base: Box, sup: Box | None, sub: Box | None, limits: bool = False):
         self.base = base
@@ -756,6 +800,9 @@ class LatexParser:
             return self._parse_until("}")
         if ch == "\\":
             return self._parse_command()
+        if ch == "&":
+            self.pos += 1
+            return TextBox(" ", self.fonts, self.size // 2)
         self.pos += 1
         return TextBox(ch, self.fonts, self.size)
 
@@ -837,6 +884,32 @@ class LatexParser:
         if not parts:
             self.pos = saved
         return "".join(parts)
+
+    def _read_optional_text(self) -> str | None:
+        self._skip_space()
+        if self.pos >= len(self.text) or self.text[self.pos] != "[":
+            return None
+        depth = 0
+        start = self.pos + 1
+        self.pos += 1
+        while self.pos < len(self.text):
+            ch = self.text[self.pos]
+            if ch == "[":
+                depth += 1
+            elif ch == "]":
+                if depth == 0:
+                    content = self.text[start:self.pos]
+                    self.pos += 1
+                    return content
+                depth -= 1
+            self.pos += 1
+        return self.text[start:]
+
+    def _parse_optional_bracket(self, scale: float = 1.0) -> Box | None:
+        content = self._read_optional_text()
+        if content is None:
+            return None
+        return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 
     def _parse_group(self, scale: float = 1.0) -> Box:
         self._skip_space()
@@ -939,8 +1012,14 @@ class LatexParser:
             lower = self._parse_group(0.78)
             return BinomialBox(upper, lower, self.size, self.fonts)
         if name == "sqrt":
-            self._skip_optional()
-            return SqrtBox(self._parse_group(0.9), self.size, self.fonts)
+            index = self._parse_optional_bracket(0.48)
+            child = self._parse_group(0.9)
+            return NthRootBox(index, child, self.size, self.fonts) if index else SqrtBox(child, self.size, self.fonts)
+        if name in {"xrightarrow", "xleftarrow"}:
+            below = self._parse_optional_bracket(0.56)
+            above = self._parse_group(0.56)
+            arrow = TextBox("→" if name == "xrightarrow" else "←", self.fonts, int(self.size * 1.18))
+            return ScriptBox(arrow, above, below, limits=True)
         if name == "overset":
             over = self._parse_group(0.62)
             base = self._parse_group(0.92)
@@ -960,6 +1039,16 @@ class LatexParser:
             if name == "pmod":
                 return HBox([TextBox("(mod ", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
             return content
+        if name == "tag":
+            self._skip_optional_star()
+            return HBox([TextBox("(", self.fonts, self.size), self._parse_group(0.82), TextBox(")", self.fonts, self.size)])
+        if name in {"label", "notag", "nonumber"}:
+            if name == "label":
+                self._read_group_text()
+            return TextBox("", self.fonts, self.size)
+        if name in {"ref", "eqref"}:
+            content = self._read_group_text()
+            return TextBox(f"({content})" if name == "eqref" else content, self.fonts, self.size)
         if name == "not":
             return self._parse_not_command()
         if name == "begin":
@@ -984,7 +1073,7 @@ class LatexParser:
             return TextBox(env, self.fonts, self.size)
         content = self.text[self.pos:end]
         self.pos = end + len(end_marker)
-        if env == "array":
+        if env == "array" or env in {"alignedat", "alignedat*", "alignat", "alignat*"}:
             content = re.sub(r"^\s*\{[^{}]*\}", "", content, count=1)
         if env not in MATRIX_ENVS:
             return LatexParser(content, self.fonts, self.size).parse()

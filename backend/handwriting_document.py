@@ -133,7 +133,26 @@ def plainify_latex_text(text: str) -> str:
     text = text.replace("$", "")
     text = text.replace("\\cfrac", "\\frac").replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
     text = _replace_simple_frac(text)
+    text = re.sub(r"\\sqrt\s*\[([^\[\]]+)\]\s*\{([^{}]+)\}", r"√[\1](\2)", text)
     text = re.sub(r"\\sqrt\s*\{([^{}]+)\}", r"√(\1)", text)
+    text = re.sub(
+        r"\\xrightarrow(?:\[([^\[\]]*)\])?\s*\{([^{}]*)\}",
+        lambda match: "→"
+        + (f"_{{{match.group(1)}}}" if match.group(1) else "")
+        + (f"^{{{match.group(2)}}}" if match.group(2) else ""),
+        text,
+    )
+    text = re.sub(
+        r"\\xleftarrow(?:\[([^\[\]]*)\])?\s*\{([^{}]*)\}",
+        lambda match: "←"
+        + (f"_{{{match.group(1)}}}" if match.group(1) else "")
+        + (f"^{{{match.group(2)}}}" if match.group(2) else ""),
+        text,
+    )
+    text = re.sub(r"\\tag\*?\s*\{([^{}]*)\}", r"(\1)", text)
+    text = re.sub(r"\\eqref\s*\{([^{}]*)\}", r"(\1)", text)
+    text = re.sub(r"\\ref\s*\{([^{}]*)\}", r"\1", text)
+    text = re.sub(r"\\(?:label|notag|nonumber)\s*(?:\{[^{}]*\})?", "", text)
     text = re.sub(
         r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
         r"\1",
@@ -144,6 +163,7 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\overline\s*\{\{?([^{}]+)\}?\}", r"\1̄", text)
     text = re.sub(r"\\stackrel\s*\{[^{}]*\}\s*\{([^{}]+)\}", r"\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
+    text = text.replace("&", " ")
     text = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)", "", text)
     text = re.sub(r"\\not\s*\\in(?![A-Za-z])", "∉", text)
     text = re.sub(r"\\pmod\s*\{([^{}]*)\}", r"mod \1", text)
@@ -168,6 +188,9 @@ def plainify_latex_text(text: str) -> str:
         "therefore": "∴",
         "because": "∵",
         "colon": ":",
+        "rightarrow": "→",
+        "leftarrow": "←",
+        "to": "→",
         "infty": "∞",
         "times": "×",
         "cdot": "·",
