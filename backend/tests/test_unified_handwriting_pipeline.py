@@ -486,6 +486,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("[[a,b];[c,d]]", "[[1,2];[3,4]]", "x^2", "x>0", "x≤0"):
             self.assertIn(token, debug_text)
 
+    def test_direct_plain_tex_matrix_and_stray_structural_commands_do_not_render_names(self):
+        debug_text = latex_to_debug_text(
+            r"\pmatrix{1&2\\3&4}+\matrix+\subarray+\buildrel x+y+\end{pmatrix}+z",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|pmatrix|matrix|subarray|buildrel|end")
+        for token in ("[[1,2];[3,4]]", "x", "y", "z"):
+            self.assertIn(token, debug_text)
+
     def test_named_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\acute{x}+\grave{y}+\breve{z}+\check{w}+\mathring{A}", FONT_PATH)
         self.assertNotRegex(debug_text, r"\\|acute|grave|breve|check|mathring")
@@ -958,7 +967,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
 
     def test_font_text_spacing_and_reference_helpers_become_office_math(self):
         markdown = (
-            r"题目 \boldsymbol{\alpha}+\boldmath{y}+\cal{F}+\Bbb{R}，"
+            r"题目 \boldsymbol{\alpha}+\boldmath{y}+\cal{F}+\Bbb{R}+\textbf{ABC123}，"
             r"\overline{x}+\underline{y}，"
             r"\textnormal{abc}+\textup{ghi}+\textsl{jkl}+\hbox{hbox}，"
             r"a\quad b+a\thinspace b+\eqref{eq:a}+\ref{r1}+\notag+x。"
@@ -966,7 +975,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         normalized = normalize_math_markdown(markdown)
         self.assertNotRegex(
             normalized,
-            r"boldmath|\\cal|\\Bbb|textnormal|textup|textsl|\\hbox|thinspace|eqref|\\ref|notag",
+            r"boldmath|\\cal|\\Bbb|textbf|textnormal|textup|textsl|\\hbox|thinspace|eqref|\\ref|notag",
         )
         for token in (
             r"$\textnormal{abc}+\textup{ghi}+\textsl{jkl}+\hbox{hbox}$",
@@ -978,6 +987,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             "y",
             r"\mathcal{F}",
             r"\mathbb{R}",
+            r"\text{ABC123}",
             r"\overline{x}",
             r"\underline{y}",
             r"\text{abc}",
@@ -994,8 +1004,8 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(docx_info["office_math_objects"], 4)
         self.assertFalse(docx_info["has_latex_residuals"])
         debug_text = markdown_render_debug_text(markdown, FONT_PATH)
-        self.assertNotRegex(debug_text, r"\\|boldmath|cal|Bbb|textnormal|\\hbox|thinspace|eqref|notag")
-        for token in ("α", "y", "F", "R", "¯x", "y_", "abc", "ghi", "jkl", "hbox", "a", "b", "eq:a", "r1", "x"):
+        self.assertNotRegex(debug_text, r"\\|boldmath|cal|Bbb|textbf|textnormal|\\hbox|thinspace|eqref|notag")
+        for token in ("α", "y", "F", "R", "ABC123", "¯x", "y_", "abc", "ghi", "jkl", "hbox", "a", "b", "eq:a", "r1", "x"):
             self.assertIn(token, debug_text)
 
     def test_bare_matrix_environment_in_text_becomes_display_office_math(self):
@@ -1373,6 +1383,15 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertEqual(first.base.debug_text(), "∑")
         self.assertEqual(first.sub.debug_text(), "i=1")
         self.assertEqual(first.sup.debug_text(), "n")
+
+    def test_contour_integral_commands_render_as_big_operator_symbols(self):
+        markdown = r"题目 \oint_C f(z)\,dz+\oiint_S g\,dS+\oiiint_V h\,dV。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertIn(r"$\oint_C f(z) dz+\oiint_S g dS+\oiiint_V h dV$", normalized)
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|oint|oiint|oiiint|operatorname")
+        for token in ("题目", "∮", "C", "f", "z", "dz", "∯", "S", "g", "dS", "∰", "V", "h", "dV"):
+            self.assertIn(token, debug_text)
 
     def test_mineru_sanitize_preserves_image_placeholders(self):
         sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")

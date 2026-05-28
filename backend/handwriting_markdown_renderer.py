@@ -353,6 +353,9 @@ BIG_OPERATORS = {
     "int": "∫",
     "iint": "∬",
     "iiint": "∭",
+    "oint": "∮",
+    "oiint": "∯",
+    "oiiint": "∰",
     "prod": "∏",
     "coprod": "∐",
     "bigcup": "⋃",
@@ -397,6 +400,17 @@ MATRIX_ENVS = {
     "subarray",
     "array",
 }
+PLAIN_TEX_MATRIX_COMMANDS = {
+    "smallmatrix": "smallmatrix",
+    "matrix": "matrix",
+    "pmatrix": "pmatrix",
+    "bmatrix": "bmatrix",
+    "Bmatrix": "Bmatrix",
+    "vmatrix": "vmatrix",
+    "Vmatrix": "Vmatrix",
+    "cases": "cases",
+    "subarray": "subarray",
+}
 STYLE_COMMANDS = {"displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "limits", "nolimits"}
 GROUP_WRAPPERS = {
     "mathrm",
@@ -430,6 +444,7 @@ GROUP_WRAPPERS = {
     "text",
     "textrm",
     "textnormal",
+    "textbf",
     "textit",
     "textup",
     "textsl",
@@ -1616,7 +1631,7 @@ class LatexParser:
                 base = self._parse_scripts(self._parse_atom()) if self.pos < len(self.text) else TextBox(" ", self.fonts, self.size)
                 over = LatexParser(over_content.strip(), self.fonts, max(8, int(self.size * 0.62))).parse()
                 return ScriptBox(base, over, None, limits=True)
-            return self._parse_unknown_command(name)
+            return TextBox("", self.fonts, self.size)
         if name == "underset":
             under = self._parse_group(0.62)
             base = self._parse_group(0.92)
@@ -1658,6 +1673,14 @@ class LatexParser:
         if name == "begin":
             env = self._read_group_text().strip()
             return self._parse_environment(env)
+        if name == "end":
+            self._read_group_text()
+            return TextBox("", self.fonts, self.size)
+        if name in PLAIN_TEX_MATRIX_COMMANDS:
+            self._skip_space()
+            if self.pos < len(self.text) and self.text[self.pos] == "{":
+                return self._parse_matrix_content(self._read_group_text(), PLAIN_TEX_MATRIX_COMMANDS[name])
+            return TextBox("", self.fonts, self.size)
         if name in BIG_OPERATORS:
             return TextBox(BIG_OPERATORS[name], self.fonts, int(self.size * (1.35 if name != "lim" else 1.0)))
         if name in GREEK:

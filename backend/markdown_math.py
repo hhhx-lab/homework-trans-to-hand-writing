@@ -339,6 +339,8 @@ LATEX_COMMAND_NAMES = (
     "iiint",
     "prod",
     "coprod",
+    "oiiint",
+    "oiint",
     "oint",
     "iint",
     "lim",
@@ -944,6 +946,7 @@ def _rewrite_unsupported_presentation_helpers(expr: str) -> str:
         r"\\text{\1}",
         expr,
     )
+    expr = re.sub(r"\\textbf\s*\{([^{}]*)\}", r"\\text{\1}", expr)
     expr = re.sub(r"\\operatornamewithlimits\s*\{([^{}]*)\}", r"\\operatorname{\1}", expr)
     expr = re.sub(r"\\textcolor\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", expr)
     expr = re.sub(r"\\(?:cancel|bcancel|xcancel|sout)\s*\{([^{}]*)\}", r"\1", expr)
