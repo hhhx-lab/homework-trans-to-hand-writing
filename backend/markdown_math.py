@@ -170,6 +170,7 @@ MATH_RELATION_RE = re.compile(
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial)(?![A-Za-z])")
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
+TEXT_GROUP_RE = re.compile(r"\\(?:text|textrm|textbf)\s*\{[^{}]*\}")
 
 
 def _looks_like_display_math(text: str) -> bool:
@@ -189,10 +190,19 @@ def _looks_like_display_math(text: str) -> bool:
 def normalize_latex_math(expr: str) -> str:
     expr = expr.replace("\r\n", "\n").replace("\r", "\n")
     expr = STYLE_COMMAND_RE.sub("", expr)
+    protected_text_groups: list[str] = []
+
+    def protect_text_group(match: re.Match[str]) -> str:
+        protected_text_groups.append(match.group(0))
+        return f"@@TEXTGROUP{len(protected_text_groups) - 1}@@"
+
+    expr = TEXT_GROUP_RE.sub(protect_text_group, expr)
     expr = expr.replace("\\dots", "\\ldots")
     expr = expr.replace("\\dotsc", "\\ldots").replace("\\dotsb", "\\ldots").replace("\\dotso", "\\ldots")
     expr = re.sub(r"\s*([_^])\s*", r"\1", expr)
     expr = re.sub(r"\{\s*([^{}\n]+?)\s*\}", r"{\1}", expr)
+    for index, text_group in enumerate(protected_text_groups):
+        expr = expr.replace(f"@@TEXTGROUP{index}@@", text_group)
     expr = re.sub(r"\\(?:,|;|:|!)", " ", expr)
     expr = re.sub(r"[ \t]+", " ", expr)
     expr = re.sub(r"\n{3,}", "\n\n", expr)

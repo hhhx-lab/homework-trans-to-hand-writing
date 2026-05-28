@@ -129,6 +129,12 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("^y", debug_text)
         self.assertIn("→z", debug_text)
 
+    def test_infix_over_renders_as_fraction(self):
+        self.assertEqual("(a)/(b)", latex_to_debug_text(r"a \over b", FONT_PATH))
+
+    def test_text_command_preserves_inner_spaces(self):
+        self.assertEqual("if x>0", latex_to_debug_text(r"\text{if }x>0", FONT_PATH))
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

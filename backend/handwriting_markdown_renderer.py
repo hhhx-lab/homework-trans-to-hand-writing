@@ -727,6 +727,13 @@ class LatexParser:
             if terminator == "}" and self.text[self.pos] == "}":
                 self.pos += 1
                 break
+            if self._consume_named_command("over"):
+                while children and isinstance(children[-1], TextBox) and children[-1].text.isspace():
+                    children.pop()
+                self._skip_space()
+                numerator = HBox(children, gap=max(0, self.size // 18)) if children else TextBox(" ", self.fonts, self.size)
+                denominator = self._parse_until(terminator)
+                return FractionBox(numerator, denominator, max(5, self.size // 10))
             atom = self._parse_atom()
             atom = self._parse_scripts(atom)
             if atom:
@@ -754,6 +761,16 @@ class LatexParser:
         if self.pos == start and self.pos < len(self.text):
             self.pos += 1
         return self.text[start:self.pos]
+
+    def _consume_named_command(self, name: str) -> bool:
+        marker = f"\\{name}"
+        end = self.pos + len(marker)
+        if not self.text.startswith(marker, self.pos):
+            return False
+        if end < len(self.text) and self.text[end].isalpha():
+            return False
+        self.pos = end
+        return True
 
     def _read_group_text(self) -> str:
         self._skip_space()
@@ -892,6 +909,8 @@ class LatexParser:
             return TextBox(" ", self.fonts, self.size // 2)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
+        if name == "text":
+            return TextBox(self._read_group_text(), self.fonts, self.size)
         if name in GROUP_WRAPPERS:
             return self._parse_group()
         if name in {"frac", "dfrac", "tfrac", "cfrac"}:
