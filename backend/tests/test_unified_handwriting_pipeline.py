@@ -255,6 +255,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertNotIn(r"\/", debug_text)
         self.assertNotIn("x_1+y$", debug_text)
 
+    def test_text_like_math_groups_unescape_visible_punctuation(self):
+        debug_text = latex_to_debug_text(
+            r"\text{A\_B \% done cost \$5 A\&B \#1}+"
+            r"\mbox{编号 \#2}+\operatorname{arg\_max}",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("A_B", "%done", "cost$5", "A&B", "#1", "编号#2", "arg_max"):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(debug_text, r"\\[_%$&#]|text|mbox|operatorname")
+
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
         self.assertIn("¯x", debug_text)

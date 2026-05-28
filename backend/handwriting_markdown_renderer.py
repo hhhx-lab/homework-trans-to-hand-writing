@@ -1481,7 +1481,7 @@ class LatexParser:
             self._read_group_text()
             return TextBox("", self.fonts, self.size)
         if name in {"mbox", "hbox"}:
-            return TextBox(self._read_group_text(), self.fonts, self.size)
+            return TextBox(_unescape_text_literals(self._read_group_text()), self.fonts, self.size)
         if name in {"boxed", "fbox"}:
             return BoxedBox(self._parse_group(0.9), self.size)
         if name in {"cancel", "bcancel", "xcancel", "sout"}:
@@ -1500,14 +1500,14 @@ class LatexParser:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in {"operatorname", "operatornamewithlimits"}:
             self._skip_optional_star()
-            return TextBox(self._read_group_text(), self.fonts, self.size)
+            return TextBox(_unescape_text_literals(self._read_group_text()), self.fonts, self.size)
         if name == "mathop":
             self._skip_optional_star()
             return self._parse_group()
         if name == "substack":
             return self._parse_matrix_content(self._read_group_text(), "substack", 0.82)
         if name == "text":
-            return TextBox(self._read_group_text(), self.fonts, self.size)
+            return TextBox(_unescape_text_literals(self._read_group_text()), self.fonts, self.size)
         if name in GROUP_WRAPPERS:
             return self._parse_group()
         if name in {"frac", "dfrac", "tfrac", "cfrac"}:
@@ -1899,8 +1899,12 @@ def _display_math_lines(expr: str, available_width: int, fonts: FontCache, size:
     return lines
 
 
-def _unescape_markdown_text(text: str) -> str:
+def _unescape_text_literals(text: str) -> str:
     return MARKDOWN_ESCAPED_TEXT_RE.sub(r"\1", text)
+
+
+def _unescape_markdown_text(text: str) -> str:
+    return _unescape_text_literals(text)
 
 
 def _text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
