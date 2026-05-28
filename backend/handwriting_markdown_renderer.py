@@ -110,6 +110,9 @@ SYMBOLS = {
     "vert": "|",
     "lvert": "|",
     "rvert": "|",
+    "Vert": "‖",
+    "lVert": "‖",
+    "rVert": "‖",
     "|": "‖",
     "langle": "〈",
     "rangle": "〉",
@@ -215,6 +218,9 @@ DELIMITER_COMMANDS = {
     "rangle": "〉",
     "vert": "|",
     "|": "‖",
+    "Vert": "‖",
+    "lVert": "‖",
+    "rVert": "‖",
     ".": "",
 }
 FALLBACK_FONT_PATHS = [

@@ -317,6 +317,11 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("F", "c", "≡", "mod", "n", "⊥", "∥", "∠", "ABC", "∴", "≠", "∵", "≤", ":", "∉", "B", "‖v‖"):
             self.assertIn(token, debug_text)
 
+    def test_norm_delimiter_commands_render_as_double_bars(self):
+        debug_text = latex_to_debug_text(r"\lVert v\rVert+\Vert x\Vert", FONT_PATH)
+        self.assertNotRegex(debug_text, r"lVert|rVert|\\")
+        self.assertEqual("‖v‖+‖x‖", debug_text)
+
     def test_limits_commands_attach_scripts_to_big_operator(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)
         box = latex_to_box(r"\sum\limits_{i=1}^{n} x_i", FontCache(font), 52)
