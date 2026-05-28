@@ -1737,11 +1737,11 @@ def _blocks(markdown: str) -> list[tuple[str, str]]:
     return blocks
 
 
-INLINE_MATH_RE = re.compile(r"\$([^$\n]+)\$")
+INLINE_MATH_RE = re.compile(r"(?<!\\)\$((?:\\.|[^$\\\n])+)\$")
 RAW_LATEX_COMMAND_RE = re.compile(r"\\(?:[A-Za-z]+|[{}_^~'`\"|])")
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 LATEX_CONTEXT_CHARS = set("\\{}[]()_^+-=*/<>.,;:|~'\"!&")
-MARKDOWN_ESCAPED_TEXT_RE = re.compile(r"\\([&%#_$*+\-=<>.!?,:;()[\]{}|~`])")
+MARKDOWN_ESCAPED_TEXT_RE = re.compile(r"\\([&%#_$/*+\-=<>.!?,:;()[\]{}|~`])")
 
 
 def _is_likely_path_escape(text: str, start: int) -> bool:
