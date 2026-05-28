@@ -286,6 +286,7 @@ LATEX_COMMAND_NAMES = (
     "tbinom",
     "binom",
     "begin",
+    "end",
     "right",
     "left",
     "sqrt",
@@ -537,6 +538,98 @@ LEGACY_INFIX_COMMANDS = {
     "atopwithdelims",
     "abovewithdelims",
 }
+PANDOC_SAFE_SYMBOL_REPLACEMENTS = {
+    "degree": "°",
+    "setminus": "∖",
+    "diagup": "⟋",
+    "diagdown": "⟍",
+    "ldotp": ".",
+    "cdotp": "·",
+    "leqsim": "⪅",
+    "geqsim": "⪆",
+    "lessapprox": "⪅",
+    "gtrapprox": "⪆",
+    "nsmile": "¬⌣",
+    "nfrown": "¬⌢",
+}
+PANDOC_SAFE_WRAPPER_COMMANDS = (
+    "llap",
+    "rlap",
+    "mathclap",
+    "mathinner",
+    "smash",
+)
+UNKNOWN_LATEX_COMMAND_RE = re.compile(r"(?<!\\)\\([A-Za-z]+)(?![A-Za-z])")
+
+
+def _read_balanced_brace_group(text: str, pos: int) -> tuple[str, int] | None:
+    pos = _skip_ws(text, pos)
+    if pos >= len(text) or text[pos] != "{":
+        return None
+    depth = 0
+    start = pos + 1
+    pos += 1
+    while pos < len(text):
+        ch = text[pos]
+        if ch == "\\" and pos + 1 < len(text) and text[pos + 1] in "{}":
+            pos += 2
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            if depth == 0:
+                return text[start:pos], pos + 1
+            depth -= 1
+        pos += 1
+    return None
+
+
+def _rewrite_unknown_latex_commands(expr: str, *, math_mode: bool) -> str:
+    result: list[str] = []
+    pos = 0
+    while pos < len(expr):
+        match = UNKNOWN_LATEX_COMMAND_RE.search(expr, pos)
+        if not match:
+            result.append(expr[pos:])
+            break
+        name = match.group(1)
+        result.append(expr[pos:match.start()])
+        if name in LATEX_COMMAND_NAMES:
+            result.append(match.group(0))
+            pos = match.end()
+            continue
+        group = _read_balanced_brace_group(expr, match.end())
+        if group:
+            content, end = group
+            content = _rewrite_unknown_latex_commands(content, math_mode=math_mode)
+            if math_mode:
+                result.append(rf"\operatorname{{{name}}}({content})")
+            else:
+                result.append(f"{name}({content})")
+            pos = end
+            continue
+        if math_mode:
+            result.append(rf"\operatorname{{{name}}}")
+        else:
+            result.append(name)
+        pos = match.end()
+    return "".join(result)
+
+
+def _unknown_latex_command_matches(expr: str) -> list[re.Match[str]]:
+    return [match for match in UNKNOWN_LATEX_COMMAND_RE.finditer(expr) if match.group(1) not in LATEX_COMMAND_NAMES]
+
+
+def _unknown_latex_command_has_group(expr: str) -> bool:
+    return any(_read_balanced_brace_group(expr, match.end()) for match in _unknown_latex_command_matches(expr))
+
+
+def _is_likely_path_escape(text: str, start: int) -> bool:
+    if start > 0 and text[start - 1] in {":", "/", "\\"}:
+        return True
+    segment_start = max(text.rfind(ch, 0, start) for ch in " \t\r\n\"'()[]{}<>，。；：！？、") + 1
+    segment_prefix = text[segment_start:start]
+    return bool(re.search(r"[A-Za-z]:[\\/]", segment_prefix) or "/" in segment_prefix or "\\" in segment_prefix)
 
 
 def _find_top_level_legacy_infix(expr: str) -> tuple[str, int, int] | None:
@@ -667,9 +760,42 @@ def _rewrite_buildrel(match: re.Match[str]) -> str:
 
 
 def _rewrite_unsupported_presentation_helpers(expr: str) -> str:
+    expr = re.sub(r"\\cfrac(?![A-Za-z])", r"\\frac", expr)
+    expr = re.sub(r"\\(?:dbinom|tbinom)(?![A-Za-z])", r"\\binom", expr)
+    expr = re.sub(
+        r"\\begin\s*\{subarray\}\s*\{[^{}]*\}(.*?)\\end\s*\{subarray\}",
+        lambda match: r"\substack{" + match.group(1).strip() + "}",
+        expr,
+        flags=re.S,
+    )
+    expr = re.sub(
+        r"\\begin\s*\{(alignedat\*?|alignat\*)\}\s*(?:\{[^{}]*\})?",
+        lambda match: r"\begin{" + ("aligned" if match.group(1).startswith("aligned") else "align") + "}",
+        expr,
+    )
+    expr = re.sub(
+        r"\\end\s*\{(alignedat\*?|alignat\*)\}",
+        lambda match: r"\end{" + ("aligned" if match.group(1).startswith("aligned") else "align") + "}",
+        expr,
+    )
+    expr = re.sub(
+        r"\\begin\s*\{array\}(?!\s*\{)(.*?)\\end\s*\{array\}",
+        lambda match: r"\begin{matrix}" + match.group(1) + r"\end{matrix}",
+        expr,
+        flags=re.S,
+    )
+    for command, replacement in PANDOC_SAFE_SYMBOL_REPLACEMENTS.items():
+        expr = re.sub(rf"\\{command}(?![A-Za-z])", replacement, expr)
+    expr = re.sub(r"\\injlim(?![A-Za-z])", r"\\operatorname{inj lim}", expr)
+    expr = re.sub(r"\\projlim(?![A-Za-z])", r"\\operatorname{proj lim}", expr)
     expr = re.sub(r"\\boldmath\s*\{([^{}]*)\}", r"\1", expr)
     expr = re.sub(r"\\cal\s*\{([^{}]*)\}", r"\\mathcal{\1}", expr)
     expr = re.sub(r"\\Bbb\s*\{([^{}]*)\}", r"\\mathbb{\1}", expr)
+    expr = re.sub(
+        r"\\(?:" + "|".join(PANDOC_SAFE_WRAPPER_COMMANDS) + r")\s*\{([^{}]*)\}",
+        r"\1",
+        expr,
+    )
     expr = re.sub(
         r"\\(?:textnormal|textup|textsl|hbox|mbox)\s*\{([^{}]*)\}",
         r"\\text{\1}",
@@ -686,6 +812,8 @@ def _rewrite_unsupported_presentation_helpers(expr: str) -> str:
         expr,
     )
     expr = re.sub(r"\\(?:hspace|vspace)\s*\{[^{}]*\}", " ", expr)
+    expr = re.sub(r"\\(?:phantom|hphantom|vphantom)\s*\{[^{}]*\}", "", expr)
+    expr = re.sub(r"\\(?:limits|nolimits)(?![A-Za-z])", "", expr)
     expr = re.sub(r"\\(?:thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace)(?![A-Za-z])", " ", expr)
     expr = re.sub(r"\\notag(?![A-Za-z])|\\nonumber(?![A-Za-z])", "", expr)
     expr = re.sub(r"\\eqref\s*\{([^{}]*)\}", r"(\\text{\1})", expr)
@@ -729,6 +857,7 @@ def normalize_latex_math(expr: str) -> str:
     expr = re.sub(r"[ \t]+", " ", expr)
     expr = re.sub(r"\n{3,}", "\n\n", expr)
     expr = _rewrite_unsupported_presentation_helpers(expr)
+    expr = _rewrite_unknown_latex_commands(expr, math_mode=True)
     expr = BUILDREL_RE.sub(_rewrite_buildrel, expr)
     expr = _rewrite_legacy_infix_math(expr.strip())
     return expr.strip()
@@ -772,10 +901,21 @@ def _trim_bare_math_expr(expr: str) -> str:
 
 
 def _looks_like_inline_bare_math(expr: str) -> bool:
-    if not expr or not LATEX_NAMED_COMMAND_RE.search(expr):
+    if not expr:
+        return False
+    unknown_commands = _unknown_latex_command_matches(expr)
+    if not LATEX_NAMED_COMMAND_RE.search(expr) and not unknown_commands:
         return False
     command_count = len(LATEX_NAMED_COMMAND_RE.findall(expr))
     operator_count = len(re.findall(r"[+\-*/=<>]", expr))
+    if command_count >= 1:
+        return True
+    if unknown_commands and (
+        _unknown_latex_command_has_group(expr)
+        or operator_count >= 1
+        or len(re.findall(r"[_^]\s*(?:\{|[A-Za-z0-9])", expr)) >= 1
+    ):
+        return True
     return bool(
         MATH_RELATION_RE.search(expr)
         or INLINE_STRUCTURAL_COMMAND_RE.search(expr)
@@ -788,7 +928,7 @@ def _wrap_bare_latex_spans(text: str) -> str:
     result: list[str] = []
     pos = 0
     while pos < len(text):
-        match = LATEX_NAMED_COMMAND_RE.search(text, pos)
+        match = UNKNOWN_LATEX_COMMAND_RE.search(text, pos)
         if not match:
             result.append(text[pos:])
             break
@@ -816,6 +956,17 @@ def _wrap_bare_latex_spans(text: str) -> str:
                 continue
         start = match.start()
         matched_command = match.group(0)[1:]
+        if matched_command not in LATEX_COMMAND_NAMES and _is_likely_path_escape(text, start):
+            result.append(text[pos:match.end()])
+            pos = match.end()
+            continue
+        if matched_command not in LATEX_COMMAND_NAMES:
+            group = _read_balanced_brace_group(text, match.end())
+            rewrite_end = group[1] if group else match.end()
+            result.append(text[pos:match.start()])
+            result.append(_rewrite_unknown_latex_commands(text[match.start():rewrite_end], math_mode=False))
+            pos = rewrite_end
+            continue
         if matched_command in {
             "over",
             "choose",
@@ -869,7 +1020,8 @@ def _flush_paragraph(result: list[str], paragraph: list[str]) -> None:
     if not paragraph:
         return
     text = "\n".join(paragraph).strip()
-    if _looks_like_display_math(text):
+    has_inline_math_delimiter = bool(INLINE_DOLLAR_RE.search(text) or INLINE_PAREN_RE.search(text))
+    if not has_inline_math_delimiter and _looks_like_display_math(text):
         result.extend(["$$", normalize_latex_math(text), "$$", ""])
     else:
         normalized = _normalize_inline_math(text)

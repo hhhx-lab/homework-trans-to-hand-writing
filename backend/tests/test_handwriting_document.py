@@ -260,7 +260,10 @@ class HandwritingDocumentTests(unittest.TestCase):
                 "a \\over b, x\\iff y, \\lceil x\\rceil.\n"
                 "保内容公式 \\textcolor{red}{x+y}, \\fbox{c+d}, "
                 "\\boldmath{y}, \\cal{F}, \\textnormal{abc}, \\eqref{eq:a}, "
-                "\\begin{array}{c|c}\\hline a&b\\\\\\cline{1-2}c&d\\end{array}.\n",
+                "\\begin{array}{c|c}\\hline a&b\\\\\\cline{1-2}c&d\\end{array}.\n"
+                "高风险符号 a\\degree b, A\\setminus B, a\\diagup b, a\\diagdown b, "
+                "a\\leqsim b, a\\geqsim b, \\injlim_{i=1}^{n}x_i, \\projlim_{i=1}^{n}x_i, "
+                "\\llap{x+y}, \\rlap{z}, \\smash{w}, x\\hphantom{hidden}y.\n",
                 encoding="utf-8",
             )
             report = convert_to_handwritten(source, tmp_dir / "out", output_stem="sample_handwritten")

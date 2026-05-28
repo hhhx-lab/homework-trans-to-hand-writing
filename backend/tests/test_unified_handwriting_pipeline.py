@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -40,6 +41,23 @@ from source_extract import extract_source_to_markdown, safe_source_filename
 
 
 FONT_PATH = Path(__file__).resolve().parents[1] / "font_assets" / "神韵英子楷书.ttf"
+
+
+def assert_semantic_tokens_preserved(
+    case: unittest.TestCase,
+    text: str,
+    *,
+    text_tokens: tuple[str, ...] = (),
+    debug_tokens: tuple[str, ...] = (),
+    forbidden_pattern: str | None = None,
+) -> None:
+    compact_text = re.sub(r"\s+", "", text)
+    if forbidden_pattern:
+        case.assertNotRegex(text, forbidden_pattern)
+    for token in text_tokens:
+        case.assertIn(token, compact_text)
+    for token in debug_tokens:
+        case.assertIn(token, text)
 
 
 class UnifiedHandwritingPipelineTests(unittest.TestCase):
@@ -104,6 +122,51 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(docx_info["office_math_objects"], 2)
         self.assertFalse(docx_info["has_latex_residuals"])
 
+    def test_markdown_normalizer_wraps_bare_symbols_functions_and_greek(self):
+        normalized = normalize_math_markdown(
+            r"已知 a\times b，角度 \sin x，希腊字母 a\alpha b，还有集合 A\cup B。"
+        )
+        for formula in (r"$a\times b$", r"$\sin x$", r"$a\alpha b$", r"$A\cup B$"):
+            self.assertIn(formula, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 4)
+        self.assertFalse(docx_info["has_latex_residuals"])
+
+    def test_markdown_normalizer_rewrites_pandoc_unsafe_commands(self):
+        markdown = (
+            r"角度 a\degree b，斜线 a\diagup b 和 a\diagdown b，"
+            r"近似不等式 a\leqsim b 与 a\geqsim b，"
+            r"集合差 A\setminus B，小点 a\ldotp b 与 a\cdotp b，"
+            r"极限 \injlim_{i=1}^{n} x_i 与 \projlim_{i=1}^{n} x_i，"
+            r"隐藏内容 x\hphantom{abc}y，覆盖 \llap{x+y}+\rlap{z}+\smash{w}，"
+            r"以及 \limits x+\nolimits y。"
+        )
+        normalized = normalize_math_markdown(markdown)
+        for raw in (
+            r"\degree",
+            r"\diagup",
+            r"\diagdown",
+            r"\leqsim",
+            r"\geqsim",
+            r"\setminus",
+            r"\ldotp",
+            r"\cdotp",
+            r"\injlim",
+            r"\projlim",
+            r"\hphantom",
+            r"\llap",
+            r"\rlap",
+            r"\smash",
+            r"\limits",
+            r"\nolimits",
+        ):
+            self.assertNotIn(raw, normalized)
+        for token in ("°", "⟋", "⟍", "⪅", "⪆", "∖", ".", "·", "inj lim", "proj lim", "xy", "x+y", "z", "w"):
+            self.assertIn(token, normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 8)
+        self.assertFalse(docx_info["has_latex_residuals"])
+
     def test_markdown_normalizer_preserves_inline_display_math_and_image_markers(self):
         markdown = "前文 ![图1](assets/a.png) 中间 $$x^2+1$$ 后文 <img src=\"b.png\" alt=\"图2\">"
         normalized = normalize_math_markdown(markdown)
@@ -122,6 +185,36 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("x", debug_text)
         self.assertIn("a", debug_text)
         self.assertIn("b", debug_text)
+
+    def test_markdown_normalizer_rewrites_unknown_latex_commands_in_explicit_math(self):
+        normalized = normalize_math_markdown(r"未知 $\foo{x}+y$ 结束。")
+        self.assertIn(r"$\operatorname{foo}(x)+y$", normalized)
+        self.assertNotIn(r"\foo", normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 1)
+        self.assertFalse(docx_info["has_latex_residuals"])
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        assert_semantic_tokens_preserved(
+            self,
+            debug_text,
+            text_tokens=("未知", "结束"),
+            debug_tokens=("foo", "x", "y"),
+            forbidden_pattern=r"\\|foo\{x\}",
+        )
+
+    def test_markdown_normalizer_preserves_unknown_latex_content_in_plain_text(self):
+        markdown = r"未知 \unknowncmd{x}+y 结束，路径 C:\Users\alice 不当公式。"
+        normalized = normalize_math_markdown(markdown)
+        self.assertNotIn(r"\unknowncmd", normalized)
+        self.assertIn("unknowncmd(x)+y", normalized)
+        self.assertIn(r"C:\Users\alice", normalized)
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+        assert_semantic_tokens_preserved(
+            self,
+            debug_text,
+            text_tokens=("未知", "unknowncmd(x)+y", "结束", "C:", "Users", "alice"),
+            forbidden_pattern=r"\\unknowncmd|unknowncmd\{x\}",
+        )
 
     def test_common_math_decorations_have_visible_marks(self):
         debug_text = latex_to_debug_text(r"\overline{x}+\hat{y}+\vec{z}", FONT_PATH)
@@ -427,6 +520,109 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn(r"\sum", result["text"])
         self.assertIn("完成", result["text"])
 
+    def test_pdf_fallback_text_is_normalized_before_handwriting_render(self):
+        import fitz
+
+        from app import extract_textfileprocess_content
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "formula.pdf"
+            doc = fitz.open()
+            page = doc.new_page(width=595, height=842)
+            page.insert_text(
+                (72, 96),
+                r"PDF题1 中文ABC123 a\times b \sin x a\degree b A\setminus B \frac{a_1}{b^2}",
+                fontsize=12,
+                fontname="handfont",
+                fontfile=str(FONT_PATH),
+            )
+            doc.save(pdf)
+            doc.close()
+
+            with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+                result = extract_textfileprocess_content(pdf)
+
+        self.assertEqual(result["source"], "pypdf2_pdf_fallback")
+        compact_text = re.sub(r"\s+", "", result["text"])
+        self.assertIn("PDF题1", compact_text)
+        self.assertIn("中文ABC123", compact_text)
+        for raw in (r"\degree", r"\setminus"):
+            self.assertNotIn(raw, result["text"])
+        self.assertIn("$", result["text"])
+        for token in (r"a\times b", r"\sin x", "°", "∖", r"\frac{a_1}{b^2}"):
+            self.assertIn(token, result["text"])
+        debug_text = markdown_render_debug_text(result["text"], FONT_PATH)
+        assert_semantic_tokens_preserved(
+            self,
+            debug_text,
+            text_tokens=("PDF题1", "中文ABC123"),
+            debug_tokens=("a×b", "sinx", "°", "A∖B", "(a_1)/(b^2)"),
+            forbidden_pattern=r"\\|degree|setminus|times|frac",
+        )
+
+    def test_multipage_pdf_fallback_preserves_page_tokens_through_render_debug(self):
+        import fitz
+
+        from app import extract_textfileprocess_content
+
+        pages = [
+            {
+                "raw": r"P1-题甲 中文甲A1B2C3 +-*/=<> a\times b \sin x \frac{a_1}{b^2}",
+                "text_tokens": ("P1-题甲", "中文甲A1B2C3", "+-*/=<>"),
+                "debug_tokens": ("a×b", "sinx", "(a_1)/(b^2)"),
+            },
+            {
+                "raw": r"P2-题乙 中文乙D4E5F6 A\setminus B a\degree b a\diagup b a\leqsim b",
+                "text_tokens": ("P2-题乙", "中文乙D4E5F6"),
+                "debug_tokens": ("A∖B", "°", "⟋", "⪅"),
+            },
+            {
+                "raw": r"P3-题丙 中文丙G7H8I9 \injlim_{i=1}^{n}x_i x\hphantom{hidden}y \llap{x+y}+\smash{w}",
+                "text_tokens": ("P3-题丙", "中文丙G7H8I9"),
+                "debug_tokens": ("inj lim", "i=1", "n", "x_i", "xy", "x+y", "w"),
+            },
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "multipage_formula.pdf"
+            doc = fitz.open()
+            for page_data in pages:
+                page = doc.new_page(width=595, height=842)
+                page.insert_text(
+                    (72, 96),
+                    page_data["raw"],
+                    fontsize=12,
+                    fontname="handfont",
+                    fontfile=str(FONT_PATH),
+                )
+            doc.save(pdf)
+            doc.close()
+
+            with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+                result = extract_textfileprocess_content(pdf)
+
+        self.assertEqual(result["source"], "pypdf2_pdf_fallback")
+        self.assertIn("$", result["text"])
+        for raw in (
+            r"\degree",
+            r"\setminus",
+            r"\diagup",
+            r"\leqsim",
+            r"\injlim",
+            r"\hphantom",
+            r"\llap",
+            r"\smash",
+        ):
+            self.assertNotIn(raw, result["text"])
+        debug_text = markdown_render_debug_text(result["text"], FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|degree|setminus|diagup|leqsim|injlim|hphantom|llap|smash|hidden")
+        for page_data in pages:
+            assert_semantic_tokens_preserved(
+                self,
+                debug_text,
+                text_tokens=page_data["text_tokens"],
+                debug_tokens=page_data["debug_tokens"],
+            )
+
     def test_raw_latex_commands_in_text_are_rendered_as_math(self):
         debug_text = markdown_render_debug_text(
             r"题目 a\equiv b\pmod{n} 结束；因此 \therefore x\ne0，且 y\not\in B。",
@@ -526,7 +722,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"$x\sim y$",
             r"$a\circ b+b\star c$",
             r"$\lceil x\rceil+\lfloor y\rfloor+\langle v\rangle$",
-            r"$\sum\limits_{i=1}^{n}x_i+\min_{x\in A}f(x)$",
+            r"$\sum_{i=1}^{n}x_i+\min_{x\in A}f(x)$",
             r"$a\uparrow b+c\downarrow d$",
         ):
             self.assertIn(formula, normalized)
@@ -621,6 +817,48 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertEqual("This is a (1)/(2) test.", debug_text)
         self.assertNotIn("\\frac", debug_text)
 
+    def test_mixed_long_content_debug_text_preserves_all_semantic_tokens(self):
+        markdown = (
+            r"第1题：中文、English-XYZ789、数字 0.125 和运算符 +-*/=<> 都不能漏。"
+            r"裸公式 a\times b、\sin x、a\alpha b、A\cup B。"
+            "\n\n"
+            r"$$"
+            r"\frac{a_1}{b^2}+\sqrt{x}+\sum_{i=1}^{n}x_i+"
+            r"\begin{pmatrix}1&2\\3&4\end{pmatrix}"
+            r"$$"
+            "\n\n"
+            r"安全改写 a\degree b，A\setminus B，a\diagup b，a\leqsim b，"
+            r"\injlim_{i=1}^{n}x_i，x\hphantom{hidden}y，\llap{x+y}+\smash{w}。"
+        )
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        assert_semantic_tokens_preserved(
+            self,
+            debug_text,
+            text_tokens=("第1题", "中文", "English-XYZ789", "0.125", "+-*/=<>"),
+            debug_tokens=(
+                "a×b",
+                "sinx",
+                "aαb",
+                "A∪B",
+                "(a_1)/(b^2)",
+                "√",
+                "∑",
+                "i=1",
+                "n",
+                "x_i",
+                "[[1,2];[3,4]]",
+                "°",
+                "A∖B",
+                "⟋",
+                "⪅",
+                "inj lim",
+                "xy",
+                "x+y",
+                "w",
+            ),
+            forbidden_pattern=r"\\|frac|sqrt|sum|begin|pmatrix|degree|setminus|diagup|leqsim|injlim|hphantom|llap|smash|hidden",
+        )
+
     def test_renderer_places_text_on_first_ruled_line_band(self):
         background = Image.new("RGB", (900, 1100), "white")
         top_margin = 70
@@ -686,6 +924,46 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(ink_bbox[1], top_margin)
         self.assertLessEqual(ink_bbox[2], background.width - right_margin)
         self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
+
+    def test_multipage_jittered_render_keeps_each_page_inside_ruled_frame(self):
+        background = Image.new("RGB", (620, 360), "white")
+        top_margin = 42
+        line_spacing = 58
+        left_margin = 48
+        right_margin = 48
+        bottom_margin = 42
+        draw = ImageDraw.Draw(background)
+        for y in range(top_margin + line_spacing, background.height - bottom_margin + 1, line_spacing):
+            draw.line((left_margin, y, background.width - right_margin, y), fill="black")
+        font = ImageFont.truetype(str(FONT_PATH), 42)
+        config = HandwritingRenderConfig(
+            line_spacing=line_spacing,
+            font_size=42,
+            left_margin=left_margin,
+            top_margin=top_margin,
+            right_margin=right_margin,
+            bottom_margin=bottom_margin,
+            word_spacing=1,
+            perturb_x_sigma=3,
+            perturb_y_sigma=3,
+            perturb_theta_sigma=0.035,
+            ink_depth_sigma=0,
+            seed=29,
+        )
+        paragraph = (
+            r"第1题 ABC123 中文不漏 $\frac{a_1}{b^2}+\sqrt{x}$，"
+            r"集合 A\setminus B，角度 a\degree b，矩阵 "
+            r"$\begin{pmatrix}1&2\\3&4\end{pmatrix}$。"
+        )
+        pages = render_markdown_handwriting("\n\n".join([paragraph] * 10), background, font, config)
+        self.assertGreater(len(pages), 1)
+        for page in pages:
+            ink_bbox = ImageChops.difference(background, page).getbbox()
+            self.assertIsNotNone(ink_bbox)
+            self.assertGreaterEqual(ink_bbox[0], left_margin)
+            self.assertGreaterEqual(ink_bbox[1], top_margin)
+            self.assertLessEqual(ink_bbox[2], background.width - right_margin)
+            self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
 
     def test_oversized_inline_formula_wraps_within_available_width(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)

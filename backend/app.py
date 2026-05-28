@@ -325,6 +325,7 @@ ch = logging.StreamHandler()
 ch.setLevel(logging.DEBUG)
 
 # 创建 file handler，并设置级别为 DEBUG
+Path("logs").mkdir(parents=True, exist_ok=True)
 fh = logging.FileHandler("logs/app.log")
 fh.setLevel(logging.DEBUG)
 
@@ -452,12 +453,22 @@ def convert_docx_to_text(docx_file_path):
 
 
 def read_pdf(file_path):
+    try:
+        import fitz
+
+        with fitz.open(file_path) as doc:
+            text = "\n".join(page.get_text(sort=True) for page in doc)
+        if text.strip():
+            return text
+    except Exception:
+        logger.exception("PyMuPDF PDF text extraction failed, falling back to PyPDF2")
+
     text = ""
     with open(file_path, "rb") as pdf_file_obj:
         pdf_reader = PyPDF2.PdfReader(pdf_file_obj)
         for page_num in range(len(pdf_reader.pages)):
             page_obj = pdf_reader.pages[page_num]
-            text += page_obj.extract_text()
+            text += page_obj.extract_text() or ""
     return text
 
 
@@ -473,7 +484,7 @@ def extract_textfileprocess_content(path: Path) -> dict[str, Any]:
     except (MinerUConfigError, MinerUExtractionError) as e:
         if suffix == ".pdf":
             return {
-                "text": read_pdf(str(path)),
+                "text": normalize_math_markdown(read_pdf(str(path))),
                 "source": "pypdf2_pdf_fallback",
                 "warnings": [user_facing_mineru_error(e)],
             }
