@@ -143,6 +143,18 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertTrue(should_render_with_markdown_renderer("plain", r"\therefore x\ne 0"))
         self.assertFalse(should_render_with_markdown_renderer("plain", "纯文本内容"))
 
+    def test_legacy_textfileprocess_uses_markdown_formula_extraction(self):
+        from app import extract_textfileprocess_content
+
+        with tempfile.TemporaryDirectory() as tmp:
+            docx = Path(tmp) / "formula.docx"
+            docx.write_bytes(editable_docx_bytes(r"旧入口公式 $\frac{a_1}{b^2}+\sum_{i=1}^{n}x_i$ 完成"))
+            result = extract_textfileprocess_content(docx)
+        self.assertIn("旧入口公式", result["text"])
+        self.assertIn(r"\frac", result["text"])
+        self.assertIn(r"\sum", result["text"])
+        self.assertIn("完成", result["text"])
+
     def test_raw_latex_commands_in_text_are_rendered_as_math(self):
         debug_text = markdown_render_debug_text(
             r"题目 a\equiv b\pmod{n} 结束；因此 \therefore x\ne0，且 y\not\in B。",

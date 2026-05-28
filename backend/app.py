@@ -461,6 +461,25 @@ def read_pdf(file_path):
     return text
 
 
+def extract_textfileprocess_content(path: Path) -> dict[str, Any]:
+    suffix = path.suffix.lower()
+    try:
+        result = extract_source_to_markdown(path)
+        return {
+            "text": result["markdown"],
+            "source": result.get("source"),
+            "warnings": result.get("warnings", []),
+        }
+    except (MinerUConfigError, MinerUExtractionError) as e:
+        if suffix == ".pdf":
+            return {
+                "text": read_pdf(str(path)),
+                "source": "pypdf2_pdf_fallback",
+                "warnings": [user_facing_mineru_error(e)],
+            }
+        raise
+
+
 def handle_exceptions(f):
     @wraps(f)
     async def decorated_function(*args, **kwargs):
@@ -1354,29 +1373,15 @@ async def textfileprocess(request: Request, file: UploadFile = File(...)):
     if file is None or file.filename == "":
         return JSONResponse({"error": "No file part in the request"}, status_code=400)
 
-    if file and (
-        file.filename.endswith(".docx")
-        or file.filename.endswith(".pdf")
-        or file.filename.endswith(".doc")
-        or file.filename.endswith(".txt")
-        or file.filename.endswith(".rtf")
-    ):
+    suffix = Path(file.filename).suffix.lower()
+    if file and suffix in {".docx", ".pdf", ".doc", ".txt", ".rtf"}:
         filename = secure_filename(file.filename)
         filepath = os.path.join(".", "textfileprocess", filename)  # 临时目录
         content = await file.read()
         with open(filepath, "wb") as f:
             f.write(content)
-        text = "读取失败"  # Default value for text
         try:
-            if file.filename.endswith(".docx"):
-                text = convert_docx_to_text(filepath)
-            elif file.filename.endswith(".pdf"):
-                text = read_pdf(filepath)
-            elif file.filename.endswith(".txt") or file.filename.endswith(".rtf"):
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    text = f.read()
-            elif file.filename.endswith(".doc"):
-                text = "doc文件暂不支持"
+            result = extract_textfileprocess_content(Path(filepath))
         except Exception as e:
             return JSONResponse(
                 {"error": f"Error reading file: {str(e)}"}, status_code=500
@@ -1385,7 +1390,7 @@ async def textfileprocess(request: Request, file: UploadFile = File(...)):
         # 删除临时文件
         safe_remove_file(filepath)
 
-        return JSONResponse({"text": text})
+        return JSONResponse({"text": result["text"], "source": result.get("source"), "warnings": result.get("warnings", [])})
 
     return JSONResponse({"error": "Invalid file type"}, status_code=400)
 
