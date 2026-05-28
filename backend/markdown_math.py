@@ -26,6 +26,7 @@ LATEX_COMMAND_NAMES = (
     "operatorname",
     "displaystyle",
     "overrightarrow",
+    "smallmatrix",
     "Rightarrow",
     "Leftarrow",
     "rightarrow",
@@ -40,6 +41,8 @@ LATEX_COMMAND_NAMES = (
     "scriptstyle",
     "therefore",
     "nonumber",
+    "substack",
+    "subarray",
     "parallel",
     "because",
     "partial",
@@ -180,7 +183,7 @@ MATH_RELATION_RE = re.compile(
     r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
-    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|eqref|ref)(?![A-Za-z])"
+    r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

@@ -160,6 +160,27 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("a", "=b+c", "d", "=e+f", "(1)"):
             self.assertIn(token, debug_text)
 
+    def test_stacked_limit_helpers_do_not_render_control_words_or_alignment_specs(self):
+        debug_text = latex_to_debug_text(
+            r"\sum_{\substack{i=1\\j=2}}^n a_{ij}+"
+            r"\lim_{\begin{subarray}{c}x\to0\\y\to1\end{subarray}} f(x,y)",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|substack|subarray|begin|end|_c")
+        for token in ("∑", "i=1", "j=2", "^n", "a", "ij", "lim", "x→0", "y→1", "f"):
+            self.assertIn(token, debug_text)
+
+    def test_matrix_variants_render_as_matrix_rows_without_control_words(self):
+        debug_text = latex_to_debug_text(
+            r"\begin{smallmatrix}1&2\\3&4\end{smallmatrix}+"
+            r"\begin{Bmatrix}a&b\\c&d\end{Bmatrix}+"
+            r"\begin{Vmatrix}p&q\\r&s\end{Vmatrix}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|begin|end|smallmatrix|Bmatrix|Vmatrix|&")
+        for token in ("[[1,2];[3,4]]", "[[a,b];[c,d]]", "[[p,q];[r,s]]"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

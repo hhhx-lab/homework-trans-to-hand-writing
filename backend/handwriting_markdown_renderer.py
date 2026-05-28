@@ -159,9 +159,12 @@ SYMBOLS = {
 BIG_OPERATORS = {"sum": "∑", "int": "∫", "iint": "∬", "iiint": "∭", "prod": "∏", "lim": "lim"}
 MATRIX_ENVS = {
     "matrix",
+    "smallmatrix",
     "pmatrix",
     "bmatrix",
+    "Bmatrix",
     "vmatrix",
+    "Vmatrix",
     "cases",
     "aligned",
     "alignedat",
@@ -180,6 +183,7 @@ MATRIX_ENVS = {
     "multline*",
     "eqnarray",
     "eqnarray*",
+    "subarray",
     "array",
 }
 STYLE_COMMANDS = {"displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "limits", "nolimits"}
@@ -615,10 +619,10 @@ class MatrixBox(Box):
         self.baseline = self.height // 2
 
     def _left_delim(self) -> str:
-        return {"pmatrix": "(", "bmatrix": "[", "vmatrix": "|", "cases": "{"}.get(self.env, "")
+        return {"pmatrix": "(", "bmatrix": "[", "Bmatrix": "{", "vmatrix": "|", "Vmatrix": "‖", "cases": "{"}.get(self.env, "")
 
     def _right_delim(self) -> str:
-        return {"pmatrix": ")", "bmatrix": "]", "vmatrix": "|"}.get(self.env, "")
+        return {"pmatrix": ")", "bmatrix": "]", "Bmatrix": "}", "vmatrix": "|", "Vmatrix": "‖"}.get(self.env, "")
 
     def _draw_delim(self, ctx: DrawContext, delim: str, x: int, y: int, height: int, width: int, *, left: bool) -> None:
         stroke = max(1, self.pad // 4)
@@ -911,6 +915,17 @@ class LatexParser:
             return None
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 
+    def _parse_matrix_content(self, content: str, env: str, scale: float = 0.86) -> MatrixBox:
+        rows = []
+        for raw_row in re.split(r"\\\\", content):
+            cells = [
+                LatexParser(cell.strip(), self.fonts, max(8, int(self.size * scale))).parse()
+                for cell in raw_row.split("&")
+            ]
+            if cells:
+                rows.append(cells)
+        return MatrixBox(rows, env, self.size, self.fonts)
+
     def _parse_group(self, scale: float = 1.0) -> Box:
         self._skip_space()
         if self.pos < len(self.text) and self.text[self.pos] != "{":
@@ -999,6 +1014,8 @@ class LatexParser:
         if name == "mathop":
             self._skip_optional_star()
             return self._parse_group()
+        if name == "substack":
+            return self._parse_matrix_content(self._read_group_text(), "substack", 0.82)
         if name == "text":
             return TextBox(self._read_group_text(), self.fonts, self.size)
         if name in GROUP_WRAPPERS:
@@ -1073,16 +1090,11 @@ class LatexParser:
             return TextBox(env, self.fonts, self.size)
         content = self.text[self.pos:end]
         self.pos = end + len(end_marker)
-        if env == "array" or env in {"alignedat", "alignedat*", "alignat", "alignat*"}:
+        if env == "array" or env in {"alignedat", "alignedat*", "alignat", "alignat*", "subarray"}:
             content = re.sub(r"^\s*\{[^{}]*\}", "", content, count=1)
         if env not in MATRIX_ENVS:
             return LatexParser(content, self.fonts, self.size).parse()
-        rows = []
-        for raw_row in re.split(r"\\\\", content):
-            cells = [LatexParser(cell.strip(), self.fonts, max(8, int(self.size * 0.86))).parse() for cell in raw_row.split("&")]
-            if cells:
-                rows.append(cells)
-        return MatrixBox(rows, env, self.size, self.fonts)
+        return self._parse_matrix_content(content, env)
 
     def _parse_scripts(self, base: Box) -> Box:
         sup = None

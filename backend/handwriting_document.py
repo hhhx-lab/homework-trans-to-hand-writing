@@ -153,6 +153,8 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\eqref\s*\{([^{}]*)\}", r"(\1)", text)
     text = re.sub(r"\\ref\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\(?:label|notag|nonumber)\s*(?:\{[^{}]*\})?", "", text)
+    text = re.sub(r"\\substack\s*\{([^{}]*)\}", lambda match: match.group(1).replace("\\\\", " "), text)
+    text = re.sub(r"\\begin\s*\{subarray\}\s*\{[^{}]*\}", " ", text)
     text = re.sub(
         r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|operatorname\*?|mathop\*?|text)\s*\{([^{}]*)\}",
         r"\1",
@@ -164,6 +166,7 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\stackrel\s*\{[^{}]*\}\s*\{([^{}]+)\}", r"\1", text)
     text = re.sub(r"\\begin\s*\{[^{}]+\}|\\end\s*\{[^{}]+\}", " ", text)
     text = text.replace("&", " ")
+    text = text.replace("\\\\", " ")
     text = re.sub(r"\\(?:left|right|big|Big|bigl|bigr|Bigl|Bigr|bigg|biggl|biggr|Bigg|Biggl|Biggr)", "", text)
     text = re.sub(r"\\not\s*\\in(?![A-Za-z])", "∉", text)
     text = re.sub(r"\\pmod\s*\{([^{}]*)\}", r"mod \1", text)
