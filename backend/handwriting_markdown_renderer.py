@@ -1640,10 +1640,11 @@ def latex_to_debug_text(expr: str, font_path: Path | None = None, size: int = 48
 
 
 def _strip_markdown_markup(line: str) -> str:
-    line = re.sub(r"^\s{0,3}#{1,6}\s*", "", line)
-    line = re.sub(r"^\s*[-*+]\s+", "", line)
+    line = re.sub(r"^\s{0,3}#{1,6}(?:\s+|$)", "", line)
     line = re.sub(r"^\s*\d+[.)]\s+", lambda m: m.group(0).strip() + " ", line)
-    line = line.replace("**", "").replace("__", "").replace("`", "")
+    line = re.sub(r"\*\*(\S(?:.*?\S)?)\*\*", r"\1", line)
+    line = re.sub(r"__(\S(?:.*?\S)?)__", r"\1", line)
+    line = re.sub(r"`([^`\n]+)`", r"\1", line)
     return line
 
 

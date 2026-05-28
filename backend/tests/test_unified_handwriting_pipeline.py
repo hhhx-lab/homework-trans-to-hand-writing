@@ -1011,6 +1011,36 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             self.assertLessEqual(ink_bbox[2], background.width - right_margin)
             self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
 
+    def test_markdown_renderer_preserves_line_leading_math_operators(self):
+        markdown = "\n".join(
+            [
+                "- 5 + 3 = 2",
+                "+ x - y = z",
+                "* a = b",
+                r"- $\frac{1}{2}$ + ABC123",
+            ]
+        )
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("-5+3=2", "+x-y=z", "*a=b", "-(1)/(2)+ABC123"):
+            self.assertIn(token, compact_text)
+
+    def test_markdown_renderer_preserves_non_markup_hash_and_star_operators(self):
+        markdown = "\n".join(
+            [
+                "#1 题号 ABC123",
+                "#define MAX 10",
+                "a ** b = c",
+                "### 普通标题仍可去掉 Markdown 标记",
+            ]
+        )
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in ("#1题号ABC123", "#defineMAX10", "a**b=c"):
+            self.assertIn(token, compact_text)
+        self.assertIn("普通标题仍可去掉Markdown标记", compact_text)
+        self.assertNotIn("###普通标题", compact_text)
+
     def test_oversized_inline_formula_wraps_within_available_width(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)
         fonts = FontCache(font)
