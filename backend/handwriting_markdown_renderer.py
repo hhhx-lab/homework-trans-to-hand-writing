@@ -189,9 +189,14 @@ COMMAND_FALLBACKS = {
     "underline": "_",
     "hat": "^",
     "widehat": "^",
+    "^": "^",
     "bar": "¯",
     "tilde": "~",
     "widetilde": "~",
+    "~": "~",
+    "'": "´",
+    "`": "`",
+    '"': "¨",
     "vec": "→",
     "overrightarrow": "→",
     "dot": "·",
@@ -643,7 +648,7 @@ class DecoratedBox(Box):
         self.mark = mark
         self.size = size
         self.pad = max(3, size // 12)
-        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "·", "··"} else 0
+        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "´", "`", "¨", "·", "··"} else 0
         extra_bottom = max(4, size // 8) if mark == "_" else 0
         self.width = child.width + self.pad * 2
         self.height = child.height + extra_top + extra_bottom
@@ -674,6 +679,16 @@ class DecoratedBox(Box):
                 (child_x + self.child.width, yy),
             ]
             ctx.hand_polyline(points, width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark in {"´", "`"}:
+            yy = y + max(1, self.pad // 2)
+            cx = child_x + self.child.width // 2
+            direction = 1 if self.mark == "´" else -1
+            ctx.hand_line(cx - direction * self.pad, yy + self.pad, cx + direction * self.pad, yy, width=stroke, wobble=max(1.0, self.pad / 3))
+        elif self.mark == "¨":
+            yy = y + max(1, self.pad // 2)
+            cx = child_x + self.child.width // 2
+            for offset in (-self.pad // 2, self.pad // 2):
+                ctx.draw.ellipse((cx + offset - stroke, yy - stroke, cx + offset + stroke, yy + stroke), fill=ctx.color())
         elif self.mark == "→":
             yy = y + max(1, self.pad)
             end_x = child_x + self.child.width
@@ -796,6 +811,15 @@ class LatexParser:
         return "".join(parts)
 
     def _parse_group(self, scale: float = 1.0) -> Box:
+        self._skip_space()
+        if self.pos < len(self.text) and self.text[self.pos] != "{":
+            old_size = self.size
+            self.size = max(8, int(self.size * scale))
+            try:
+                atom = self._parse_atom()
+                return self._parse_scripts(atom)
+            finally:
+                self.size = old_size
         content = self._read_group_text()
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 

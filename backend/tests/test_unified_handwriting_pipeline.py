@@ -93,6 +93,16 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("^y", debug_text)
         self.assertIn("→z", debug_text)
 
+    def test_escaped_accent_commands_render_as_decorations(self):
+        debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
+        self.assertNotIn("\\", debug_text)
+        self.assertNotIn("~(", debug_text)
+        self.assertIn("~π", debug_text)
+        self.assertIn("´e", debug_text)
+        self.assertIn("`a", debug_text)
+        self.assertIn("¨u", debug_text)
+        self.assertIn("x^π", debug_text)
+
     def test_common_latex_commands_render_readably_without_raw_latex(self):
         expr = (
             r"\dfrac{a_1}{b^2}+\binom{n}{k}+\overset{a}{b}+"
