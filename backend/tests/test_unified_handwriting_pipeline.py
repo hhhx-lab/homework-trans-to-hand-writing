@@ -174,6 +174,11 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("题目", "a", "≡", "b", "mod", "n", "结束", "∴", "x", "≠", "0", "y", "∉", "B"):
             self.assertIn(token, debug_text)
 
+    def test_raw_latex_commands_do_not_swallow_adjacent_plain_text(self):
+        debug_text = markdown_render_debug_text(r"This is a \frac{1}{2} test.", FONT_PATH)
+        self.assertEqual("This is a (1)/(2) test.", debug_text)
+        self.assertNotIn("\\frac", debug_text)
+
     def test_renderer_places_text_on_first_ruled_line_band(self):
         background = Image.new("RGB", (900, 1100), "white")
         top_margin = 70

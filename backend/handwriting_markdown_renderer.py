@@ -1074,12 +1074,56 @@ def _blocks(markdown: str) -> list[tuple[str, str]]:
 INLINE_MATH_RE = re.compile(r"\$([^$\n]+)\$")
 RAW_LATEX_COMMAND_RE = re.compile(r"\\(?:[A-Za-z]+|[{}_^~'`\"|])")
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
+LATEX_CONTEXT_CHARS = set("\\{}[]()_^+-=*/<>.,;:|~'\"!&")
 
 
 def _is_latex_context_char(ch: str) -> bool:
     if TEXT_MATH_BOUNDARY_RE.match(ch):
         return False
-    return ch.isalnum() or ch.isspace() or ch in "\\{}[]()_^+-=*/<>.,;:|~'\"!&"
+    return ch.isalnum() or ch in LATEX_CONTEXT_CHARS
+
+
+def _raw_latex_span_end(text: str, end: int) -> int:
+    i = end
+    brace_depth = 0
+    while i < len(text):
+        ch = text[i]
+        if TEXT_MATH_BOUNDARY_RE.match(ch):
+            break
+        if ch == "{":
+            brace_depth += 1
+            i += 1
+            continue
+        if ch == "}":
+            if not brace_depth:
+                break
+            brace_depth -= 1
+            i += 1
+            continue
+        if ch.isspace():
+            if brace_depth:
+                i += 1
+                continue
+            next_nonspace = i
+            while next_nonspace < len(text) and text[next_nonspace].isspace():
+                next_nonspace += 1
+            if next_nonspace < len(text) and text[next_nonspace] == "{":
+                i = next_nonspace
+                continue
+            break
+        if ch == "\\":
+            i += 1
+            if i < len(text) and text[i].isalpha():
+                while i < len(text) and text[i].isalpha():
+                    i += 1
+            elif i < len(text):
+                i += 1
+            continue
+        if ch.isalnum() or ch in LATEX_CONTEXT_CHARS:
+            i += 1
+            continue
+        break
+    return i
 
 
 def _raw_latex_span(text: str, pos: int) -> tuple[int, int] | None:
@@ -1087,11 +1131,9 @@ def _raw_latex_span(text: str, pos: int) -> tuple[int, int] | None:
     if not match:
         return None
     start = match.start()
-    end = match.end()
+    end = _raw_latex_span_end(text, match.end())
     while start > 0 and _is_latex_context_char(text[start - 1]):
         start -= 1
-    while end < len(text) and _is_latex_context_char(text[end]):
-        end += 1
     while start < match.start() and text[start].isspace():
         start += 1
     while end > match.end() and text[end - 1].isspace():
