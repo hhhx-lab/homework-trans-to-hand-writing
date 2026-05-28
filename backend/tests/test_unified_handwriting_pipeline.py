@@ -188,6 +188,31 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreater(len(lines), 1)
         self.assertTrue(all(line.width <= 360 for line in lines))
 
+    def test_oversized_display_formula_stays_within_right_margin(self):
+        background = Image.new("RGB", (600, 900), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        config = HandwritingRenderConfig(
+            line_spacing=90,
+            font_size=52,
+            left_margin=70,
+            top_margin=70,
+            right_margin=70,
+            bottom_margin=70,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            ink_depth_sigma=0,
+        )
+        page = render_markdown_handwriting(
+            "$$\nabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890\n$$",
+            background,
+            font,
+            config,
+        )[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertLessEqual(ink_bbox[2], background.width - config.right_margin)
+
     def test_missing_math_symbol_glyphs_use_fallback_font(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)
         self.assertIsNone(font.getmask("↔").getbbox())

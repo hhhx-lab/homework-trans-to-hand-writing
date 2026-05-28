@@ -1287,7 +1287,11 @@ def render_markdown_handwriting(
                 while box.width > available_width and size > 24:
                     size = max(24, int(size * 0.9))
                     box = latex_to_box(math_line, fonts, size)
-                draw_line(box, extra_gap=config.line_spacing // 2, center=True)
+                if box.width > available_width:
+                    for wrapped in _layout_inline([box], available_width, config.word_spacing):
+                        draw_line(wrapped, extra_gap=config.line_spacing // 2, center=True)
+                else:
+                    draw_line(box, extra_gap=config.line_spacing // 2, center=True)
             continue
         for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing):
             draw_line(line)
