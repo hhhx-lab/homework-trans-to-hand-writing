@@ -505,6 +505,32 @@ LATEX_COMMAND_NAMES = (
     "Re",
     "Im",
     "wp",
+    "lessdot",
+    "gtrdot",
+    "lll",
+    "ggg",
+    "nleqslant",
+    "ngeqslant",
+    "lneqq",
+    "gneqq",
+    "subsetneqq",
+    "supsetneqq",
+    "varsubsetneq",
+    "varsupsetneq",
+    "nexists",
+    "complement",
+    "Bbbk",
+    "ulcorner",
+    "urcorner",
+    "llcorner",
+    "lrcorner",
+    "curlywedge",
+    "curlyvee",
+    "Cap",
+    "Cup",
+    "circledast",
+    "circledcirc",
+    "circleddash",
 )
 LATEX_NAMED_COMMAND_RE = re.compile(r"\\(?:" + "|".join(LATEX_COMMAND_NAMES) + r")(?![A-Za-z])")
 LATEX_RESIDUAL_RE = re.compile(r"\\(?:[A-Za-z]+|[,;:! ]|[{}_^~'\"`|])|(?<!\\)\$")
@@ -517,6 +543,7 @@ MATH_RELATION_RE = re.compile(
     r"supset|supseteq|nsupseteq|supsetneq|Subset|Supset|sqsubset|sqsupset|sqsubseteq|sqsupseteq|propto|"
     r"prec|preceq|succ|succeq|nleq|ngeq|nless|ngtr|lneq|gneq|lnsim|gnsim|ncong|napprox|nsim|nmid|nsmile|nfrown|smallsmile|smallfrown|"
     r"leqq|geqq|leqsim|geqsim|lesssim|gtrsim|lessapprox|gtrapprox|precsim|succsim|"
+    r"lessdot|gtrdot|lll|ggg|nleqslant|ngeqslant|lneqq|gneqq|subsetneqq|supsetneqq|varsubsetneq|varsupsetneq|"
     r"lessgtr|gtrless|ll|gg|asymp|doteq|models|vdash|dashv|vDash|Vdash|VDash|Vvdash|"
     r"nvdash|nvDash|nVdash|nVDash|"
     r"smallsetminus|diagup|diagdown|sqcup|sqcap|uplus|wr|amalg|boxtimes|boxplus|boxminus|boxdot|ltimes|rtimes|leftthreetimes|rightthreetimes|"
@@ -526,7 +553,8 @@ MATH_RELATION_RE = re.compile(
     r"leftharpoonup|leftharpoondown|rightharpoonup|rightharpoondown|leftrightharpoons|rightleftharpoons|nearrow|searrow|nwarrow|swarrow|"
     r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|longrightarrow|longleftarrow|longleftrightarrow|"
     r"leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|longmapsto|implies|"
-    r"coloneqq|eqqcolon|triangleq|middle)(?![A-Za-z])"
+    r"coloneqq|eqqcolon|triangleq|nexists|complement|curlywedge|curlyvee|Cap|Cup|"
+    r"circledast|circledcirc|circleddash|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|dbinom|tbinom|pmod|partial|xrightarrow|xleftarrow|"
@@ -547,6 +575,8 @@ INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"pmb|boldmath|cal|Bbb|operatornamewithlimits|textnormal|textit|textup|textsl|texttt|textsf|"
     r"smash|rlap|llap|mathclap|raisebox|"
     r"varpi|varsigma|varrho|varDelta|varGamma|varTheta|varLambda|varOmega|"
+    r"lessdot|gtrdot|lll|ggg|nleqslant|ngeqslant|lneqq|gneqq|subsetneqq|supsetneqq|varsubsetneq|varsupsetneq|"
+    r"nexists|complement|Bbbk|ulcorner|urcorner|llcorner|lrcorner|curlywedge|curlyvee|Cap|Cup|circledast|circledcirc|circleddash|"
     r"bullet|diamond|Box|square|blacksquare|triangleleft|triangleright|"
     r"thinspace|medspace|thickspace|negthinspace|negmedspace|negthickspace|"
     r"bmod|pod|over|choose|atop|brack|brace|above|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|"
@@ -591,6 +621,32 @@ PANDOC_SAFE_SYMBOL_REPLACEMENTS = {
     "varTheta": "Θ",
     "varLambda": "Λ",
     "varOmega": "Ω",
+    "lessdot": "⋖",
+    "gtrdot": "⋗",
+    "lll": "⋘",
+    "ggg": "⋙",
+    "nleqslant": "≰",
+    "ngeqslant": "≱",
+    "lneqq": "≨",
+    "gneqq": "≩",
+    "subsetneqq": "⫋",
+    "supsetneqq": "⫌",
+    "varsubsetneq": "⊊",
+    "varsupsetneq": "⊋",
+    "nexists": "∄",
+    "complement": "∁",
+    "Bbbk": "𝕜",
+    "ulcorner": "⌜",
+    "urcorner": "⌝",
+    "llcorner": "⌞",
+    "lrcorner": "⌟",
+    "curlywedge": "⋏",
+    "curlyvee": "⋎",
+    "Cap": "⋒",
+    "Cup": "⋓",
+    "circledast": "⊛",
+    "circledcirc": "⊚",
+    "circleddash": "⊝",
     "nsmile": "¬⌣",
     "nfrown": "¬⌢",
 }

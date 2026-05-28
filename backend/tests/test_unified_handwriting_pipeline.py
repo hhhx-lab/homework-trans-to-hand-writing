@@ -344,6 +344,30 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"precsim|succsim|coloneqq|eqqcolon|triangleq|leadsto|longmapsto",
         )
 
+    def test_common_amssymb_variants_render_without_command_words(self):
+        debug_text = latex_to_debug_text(
+            r"a\lessdot b+c\gtrdot d+e\lll f+g\ggg h+"
+            r"i\nleqslant j+k\ngeqslant l+m\lneqq n+o\gneqq p+"
+            r"A\subsetneqq B+C\supsetneqq D+E\varsubsetneq F+G\varsupsetneq H+"
+            r"\nexists x+\complement A+\Bbbk+\ulcorner x\urcorner+\llcorner y\lrcorner+"
+            r"p\curlywedge q+r\curlyvee s+t\Cap u+v\Cup w+"
+            r"x\circledast y+z\circledcirc a+b\circleddash c",
+            FONT_PATH,
+        )
+        compact_text = re.sub(r"\s+", "", debug_text)
+        for token in (
+            "⋖", "⋗", "⋘", "⋙", "≰", "≱", "≨", "≩", "⫋", "⫌",
+            "⊊", "⊋", "∄", "∁", "𝕜", "⌜x⌝", "⌞y⌟", "⋏", "⋎",
+            "⋒", "⋓", "⊛", "⊚", "⊝",
+        ):
+            self.assertIn(token, compact_text)
+        self.assertNotRegex(
+            debug_text,
+            r"\\|lessdot|gtrdot|lll|ggg|nleqslant|ngeqslant|lneqq|gneqq|subsetneqq|supsetneqq|"
+            r"varsubsetneq|varsupsetneq|nexists|complement|Bbbk|ulcorner|urcorner|llcorner|lrcorner|"
+            r"curlywedge|curlyvee|Cap|Cup|circledast|circledcirc|circleddash",
+        )
+
     def test_named_delimiter_commands_render_as_visible_delimiters(self):
         debug_text = latex_to_debug_text(
             r"\lbrace x\in A \rbrace+\lparen y \rparen+\lbrack z \rbrack+"
