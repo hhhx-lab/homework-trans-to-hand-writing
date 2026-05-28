@@ -97,6 +97,13 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreater(docx_info["office_math_objects"], 0)
         self.assertFalse(docx_info["has_latex_residuals"])
 
+    def test_markdown_normalizer_wraps_bare_math_inside_chinese_text(self):
+        normalized = normalize_math_markdown(r"解：\partial f/\partial x=0，所以 a\equiv b\pmod{n}。")
+        self.assertIn(r"解：$\partial f/\partial x=0$，所以 $a\equiv b\pmod{n}$。", normalized)
+        docx_info = inspect_docx_math(editable_docx_bytes(normalized))
+        self.assertGreaterEqual(docx_info["office_math_objects"], 2)
+        self.assertFalse(docx_info["has_latex_residuals"])
+
     def test_markdown_normalizer_preserves_inline_display_math_and_image_markers(self):
         markdown = "前文 ![图1](assets/a.png) 中间 $$x^2+1$$ 后文 <img src=\"b.png\" alt=\"图2\">"
         normalized = normalize_math_markdown(markdown)

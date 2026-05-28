@@ -167,6 +167,8 @@ MATH_RELATION_RE = re.compile(
     r"pmod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
     r"to|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto)(?![A-Za-z])"
 )
+INLINE_STRUCTURAL_COMMAND_RE = re.compile(r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial)(?![A-Za-z])")
+TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")
 
 
@@ -197,9 +199,94 @@ def normalize_latex_math(expr: str) -> str:
     return expr.strip()
 
 
+def _is_bare_math_char(ch: str) -> bool:
+    if TEXT_MATH_BOUNDARY_RE.match(ch) or ch in "$":
+        return False
+    return ch.isascii() and (ch.isalnum() or ch.isspace() or ch in "\\{}[]()_^+-=*/<>.,;:|~'\"!&")
+
+
+def _bare_math_span_end(text: str, end: int) -> int:
+    i = end
+    brace_depth = 0
+    while i < len(text):
+        ch = text[i]
+        if not _is_bare_math_char(ch):
+            break
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth = max(0, brace_depth - 1)
+        elif ch.isspace() and not brace_depth:
+            next_nonspace = i
+            while next_nonspace < len(text) and text[next_nonspace].isspace():
+                next_nonspace += 1
+            tail = text[next_nonspace:]
+            if re.match(r"[A-Za-z]{2,}(?:\s|$|[.。])", tail):
+                break
+        i += 1
+    return i
+
+
+def _trim_bare_math_expr(expr: str) -> str:
+    expr = expr.strip()
+    while True:
+        trimmed = re.sub(r"\s+[A-Za-z]{2,}\.?$", "", expr).rstrip()
+        if trimmed == expr:
+            return expr
+        expr = trimmed
+
+
+def _looks_like_inline_bare_math(expr: str) -> bool:
+    if not expr or not LATEX_NAMED_COMMAND_RE.search(expr):
+        return False
+    return bool(
+        MATH_RELATION_RE.search(expr)
+        or INLINE_STRUCTURAL_COMMAND_RE.search(expr)
+        or len(re.findall(r"[_^]\s*(?:\{|[A-Za-z0-9])", expr)) >= 1
+    )
+
+
+def _wrap_bare_latex_spans(text: str) -> str:
+    result: list[str] = []
+    pos = 0
+    while pos < len(text):
+        match = LATEX_NAMED_COMMAND_RE.search(text, pos)
+        if not match:
+            result.append(text[pos:])
+            break
+        start = match.start()
+        while start > pos and not text[start - 1].isspace() and _is_bare_math_char(text[start - 1]):
+            start -= 1
+        end = _bare_math_span_end(text, match.end())
+        expr = _trim_bare_math_expr(text[start:end])
+        if not _looks_like_inline_bare_math(expr):
+            result.append(text[pos:match.end()])
+            pos = match.end()
+            continue
+        expr_start = text.find(expr, start, end)
+        expr_end = expr_start + len(expr)
+        result.append(text[pos:expr_start])
+        result.append(f"${normalize_latex_math(expr)}$")
+        pos = expr_end
+    return "".join(result)
+
+
+def _normalize_bare_inline_math(text: str) -> str:
+    parts: list[str] = []
+    pos = 0
+    for match in INLINE_DOLLAR_RE.finditer(text):
+        parts.append(_wrap_bare_latex_spans(text[pos:match.start()]))
+        parts.append(match.group(0))
+        pos = match.end()
+    parts.append(_wrap_bare_latex_spans(text[pos:]))
+    return "".join(parts)
+
+
 def _normalize_inline_math(text: str) -> str:
     text = INLINE_PAREN_RE.sub(lambda m: f"${normalize_latex_math(m.group(1))}$", text)
-    return INLINE_DOLLAR_RE.sub(lambda m: f"${normalize_latex_math(m.group(1))}$", text)
+    text = INLINE_DOLLAR_RE.sub(lambda m: f"${normalize_latex_math(m.group(1))}$", text)
+    return _normalize_bare_inline_math(text)
+
 
 
 def _flush_paragraph(result: list[str], paragraph: list[str]) -> None:
