@@ -1207,10 +1207,13 @@ def markdown_render_debug_text(markdown: str, font_path: Path | None = None, siz
 
 
 def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int) -> list[HBox]:
+    layout_boxes: list[Box] = []
+    for box in boxes:
+        layout_boxes.extend(_split_layout_box(box, available_width))
     lines: list[list[Box]] = []
     current: list[Box] = []
     width = 0
-    for box in boxes:
+    for box in layout_boxes:
         gap = word_spacing if current else 0
         if current and width + gap + box.width > available_width:
             lines.append(current)
@@ -1222,6 +1225,17 @@ def _layout_inline(boxes: list[Box], available_width: int, word_spacing: int) ->
     if current:
         lines.append(current)
     return [HBox(line, gap=word_spacing) for line in lines]
+
+
+def _split_layout_box(box: Box, available_width: int) -> list[Box]:
+    if box.width <= available_width:
+        return [box]
+    if isinstance(box, HBox) and box.children:
+        split: list[Box] = []
+        for child in box.children:
+            split.extend(_split_layout_box(child, available_width))
+        return split
+    return [box]
 
 
 def render_markdown_handwriting(

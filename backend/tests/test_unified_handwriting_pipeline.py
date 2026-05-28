@@ -20,6 +20,8 @@ from handwriting_markdown_renderer import (
     HandwritingRenderConfig,
     ScriptBox,
     TextBox,
+    _layout_inline,
+    _text_to_boxes,
     latex_to_debug_text,
     latex_to_box,
     markdown_render_debug_text,
@@ -177,6 +179,14 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIsNotNone(ink_bbox)
         self.assertGreaterEqual(ink_bbox[1], top_margin)
         self.assertGreaterEqual(ink_bbox[3], first_rule_y - 12)
+
+    def test_oversized_inline_formula_wraps_within_available_width(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        fonts = FontCache(font)
+        formula = "$" + "+".join(f"a_{i}" for i in range(1, 18)) + "$"
+        lines = _layout_inline(_text_to_boxes("长公式 " + formula + " 结束", fonts, 52), 360, 1)
+        self.assertGreater(len(lines), 1)
+        self.assertTrue(all(line.width <= 360 for line in lines))
 
     def test_missing_math_symbol_glyphs_use_fallback_font(self):
         font = ImageFont.truetype(str(FONT_PATH), 52)
