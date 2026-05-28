@@ -1292,6 +1292,8 @@ def render_markdown_handwriting(
     rand = random.Random(config.seed)
     available_width = background.width - config.left_margin - config.right_margin
     max_y = background.height - config.bottom_margin
+    max_line_height = max(1, max_y - config.top_margin)
+    min_formula_size = max(16, min(24, int(config.font_size)))
     pages: list[Image.Image] = []
     page = background.copy()
     draw = ImageDraw.Draw(page)
@@ -1326,8 +1328,8 @@ def render_markdown_handwriting(
             for math_line in _display_math_lines(content, available_width, fonts, config.font_size):
                 size = config.font_size
                 box = latex_to_box(math_line, fonts, size)
-                while box.width > available_width and size > 24:
-                    size = max(24, int(size * 0.9))
+                while (box.width > available_width or box.height > max_line_height) and size > min_formula_size:
+                    size = max(min_formula_size, int(size * 0.9))
                     box = latex_to_box(math_line, fonts, size)
                 if box.width > available_width:
                     for wrapped in _layout_inline([box], available_width, config.word_spacing):
