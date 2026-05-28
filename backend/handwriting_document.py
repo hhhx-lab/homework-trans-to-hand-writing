@@ -215,6 +215,11 @@ def plainify_latex_text(text: str) -> str:
         r"\1",
         text,
     )
+    text = re.sub(
+        r"\\(?:boldsymbol|boldmath|mathbf|mathrm|mathbb|mathscr|mathds|mathcal|mathfrak|mathsf|mathtt|mathit|textbf|bm|textrm|textnormal|textit|textup|textsl|texttt|textsf|cal|Bbb|pmb|operatornamewithlimits|operatorname\*?|mathop\*?)\s+([A-Za-z0-9_]+)",
+        r"\1",
+        text,
+    )
     text = re.sub(r"\\bf\s*([A-Za-z0-9]+)", r"\1", text)
     text = re.sub(r"\\overline\s*\{\{?([^{}]+)\}?\}", r"\1̄", text)
     text = re.sub(r"\\(?:acute|')\s*\{([^{}]+)\}", r"´\1", text)

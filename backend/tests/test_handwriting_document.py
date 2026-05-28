@@ -101,6 +101,18 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("def", "=", "x", "y", "F", "R", "abc", "argmax"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_unbraced_font_wrapper_content(self):
+        text = plainify_latex_text(
+            r"\mathbb R+\mathbf x+\mathrm d+\mathcal F+\Bbb N+\cal G+"
+            r"\pmb z+\boldmath y+\operatornamewithlimits argmax_x"
+        )
+        self.assertNotRegex(
+            text,
+            r"\\|mathbb|mathbf|mathrm|mathcal|Bbb|cal|pmb|boldmath|operatornamewithlimits",
+        )
+        for token in ("R", "x", "d", "F", "N", "G", "z", "y", "argmax_x"):
+            self.assertIn(token, text)
+
     def test_plainify_latex_text_preserves_optional_root_arrow_and_tag_content(self):
         text = plainify_latex_text(
             r"\sqrt[3]{x}+\xrightarrow[n\to0]{m\to\infty}y+"
