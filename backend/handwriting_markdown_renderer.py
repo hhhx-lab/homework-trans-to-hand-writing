@@ -225,8 +225,13 @@ COMMAND_FALLBACKS = {
     "tilde": "~",
     "widetilde": "~",
     "~": "~",
+    "acute": "´",
     "'": "´",
+    "grave": "`",
     "`": "`",
+    "breve": "˘",
+    "check": "ˇ",
+    "mathring": "˚",
     '"': "¨",
     "vec": "→",
     "overrightarrow": "→",
@@ -707,7 +712,7 @@ class DecoratedBox(Box):
         self.mark = mark
         self.size = size
         self.pad = max(3, size // 12)
-        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "←", "⌒", "´", "`", "¨", "·", "··"} else 0
+        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "←", "⌒", "´", "`", "¨", "˘", "ˇ", "˚", "·", "··"} else 0
         extra_bottom = max(4, size // 8) if mark in {"_", "⌣", "_→", "_←"} else 0
         self.width = child.width + self.pad * 2
         self.height = child.height + extra_top + extra_bottom
@@ -748,6 +753,10 @@ class DecoratedBox(Box):
             cx = child_x + self.child.width // 2
             for offset in (-self.pad // 2, self.pad // 2):
                 ctx.draw.ellipse((cx + offset - stroke, yy - stroke, cx + offset + stroke, yy + stroke), fill=ctx.color())
+        elif self.mark in {"˘", "ˇ", "˚"}:
+            yy = y + max(1, self.pad // 4)
+            cx = child_x + self.child.width // 2
+            TextBox(self.mark, ctx.fonts, max(8, int(self.size * 0.55))).draw(ctx, cx - self.pad, yy)
         elif self.mark in {"→", "←"}:
             yy = y + max(1, self.pad)
             self._draw_arrow(ctx, child_x, yy, child_x + self.child.width, self.mark, stroke)
@@ -1088,6 +1097,15 @@ class LatexParser:
         if name in {"cancel", "bcancel", "xcancel", "sout"}:
             styles = {"cancel": "slash", "bcancel": "backslash", "xcancel": "x", "sout": "horizontal"}
             return StrikeBox(self._parse_group(0.9), styles[name], self.size)
+        if name == "hline":
+            return TextBox("", self.fonts, self.size)
+        if name == "cline":
+            self._read_group_text()
+            return TextBox("", self.fonts, self.size)
+        if name in {"multicolumn", "multirow"}:
+            self._read_group_text()
+            self._read_group_text()
+            return self._parse_group(0.9)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name == "operatorname":

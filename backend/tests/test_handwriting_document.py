@@ -85,6 +85,15 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("x+y", "[a+b]", "z", "AB", "{", "|", "x>0", "}"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_array_span_and_named_accent_content(self):
+        text = plainify_latex_text(
+            r"\begin{array}{c|c}\hline a&b\\\cline{1-2}\multicolumn{2}{c}{c+d}\end{array}"
+            r"+\acute{x}+\breve{z}"
+        )
+        self.assertNotRegex(text, r"\\|array|hline|cline|multicolumn|acute|breve|c\|c")
+        for token in ("a", "b", "c+d", "´x", "˘z"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"

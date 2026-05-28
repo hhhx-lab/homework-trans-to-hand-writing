@@ -29,6 +29,7 @@ LATEX_COMMAND_NAMES = (
     "underrightarrow",
     "underleftarrow",
     "overleftarrow",
+    "multicolumn",
     "smallmatrix",
     "textcolor",
     "underparen",
@@ -74,6 +75,7 @@ LATEX_COMMAND_NAMES = (
     "label",
     "notag",
     "middle",
+    "multirow",
     "mapsto",
     "notin",
     "pmod",
@@ -86,12 +88,19 @@ LATEX_COMMAND_NAMES = (
     "sqrt",
     "boxed",
     "color",
+    "grave",
+    "acute",
+    "breve",
+    "check",
     "fbox",
+    "hline",
+    "cline",
     "sout",
     "bcancel",
     "xcancel",
     "cancel",
     "frac",
+    "mathring",
     "iiint",
     "prod",
     "oint",
@@ -198,7 +207,8 @@ MATH_RELATION_RE = re.compile(
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
-    r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|eqref|ref)(?![A-Za-z])"
+    r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
+    r"hline|cline|acute|grave|breve|check|mathring|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

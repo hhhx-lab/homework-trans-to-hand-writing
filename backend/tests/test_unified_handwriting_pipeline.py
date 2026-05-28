@@ -201,6 +201,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("x+y", "z", "x", "y", "w", "{", "|", "x>0", "}"):
             self.assertIn(token, debug_text)
 
+    def test_array_rule_and_span_commands_do_not_render_control_words(self):
+        debug_text = latex_to_debug_text(
+            r"\begin{array}{c|c}\hline a&b\\\cline{1-2}\multicolumn{2}{c}{c+d}\end{array}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|hline|cline|multicolumn|c\|c")
+        for token in ("a", "b", "c+d"):
+            self.assertIn(token, debug_text)
+
+    def test_named_accent_commands_render_as_decorations(self):
+        debug_text = latex_to_debug_text(r"\acute{x}+\grave{y}+\breve{z}+\check{w}+\mathring{A}", FONT_PATH)
+        self.assertNotRegex(debug_text, r"\\|acute|grave|breve|check|mathring")
+        for token in ("´x", "`y", "˘z", "ˇw", "˚A"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)
