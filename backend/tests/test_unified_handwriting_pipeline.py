@@ -351,6 +351,35 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIsNotNone(ink_bbox)
         self.assertLessEqual(ink_bbox[2], background.width - config.right_margin)
 
+    def test_unsplittable_wide_display_formula_scales_within_right_margin(self):
+        background = Image.new("RGB", (420, 520), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        config = HandwritingRenderConfig(
+            line_spacing=80,
+            font_size=52,
+            left_margin=50,
+            top_margin=50,
+            right_margin=50,
+            bottom_margin=50,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+        )
+        row1 = " & ".join(f"abcdefghij{i}" for i in range(8))
+        row2 = " & ".join(f"klmnopqrst{i}" for i in range(8))
+        page = render_markdown_handwriting(
+            f"$$\n\\begin{{pmatrix}}{row1}\\\\{row2}\\end{{pmatrix}}\n$$",
+            background,
+            font,
+            config,
+        )[0]
+        ink_bbox = ImageChops.difference(background, page).getbbox()
+        self.assertIsNotNone(ink_bbox)
+        self.assertGreaterEqual(ink_bbox[0], config.left_margin)
+        self.assertLessEqual(ink_bbox[2], background.width - config.right_margin)
+
     def test_tall_display_formula_stays_above_bottom_margin(self):
         background = Image.new("RGB", (500, 320), "white")
         font = ImageFont.truetype(str(FONT_PATH), 72)

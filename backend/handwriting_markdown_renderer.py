@@ -843,6 +843,26 @@ class StrikeBox(Box):
         return self.child.debug_text()
 
 
+class ScaledBox(Box):
+    def __init__(self, child: Box, scale: float):
+        self.child = child
+        self.scale = max(0.01, min(1.0, scale))
+        self.width = max(1, int(child.width * self.scale))
+        self.height = max(1, int(child.height * self.scale))
+        self.baseline = max(1, int(child.baseline * self.scale))
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        layer = Image.new("RGBA", (max(1, self.child.width), max(1, self.child.height)), (0, 0, 0, 0))
+        layer_ctx = DrawContext(layer, ImageDraw.Draw(layer), ctx.fonts, ctx.config, ctx.rand)
+        layer_ctx.depth = ctx.depth
+        self.child.draw(layer_ctx, 0, 0)
+        resized = layer.resize((self.width, self.height), Image.Resampling.LANCZOS)
+        ctx.image.paste(resized.convert(ctx.image.mode), (x, y), resized)
+
+    def debug_text(self) -> str:
+        return self.child.debug_text()
+
+
 class LatexParser:
     def __init__(self, text: str, fonts: FontCache, size: int):
         self.text = text.strip()
@@ -1514,7 +1534,7 @@ def _split_layout_box(box: Box, available_width: int) -> list[Box]:
         for child in box.children:
             split.extend(_split_layout_box(child, available_width))
         return split
-    return [box]
+    return [ScaledBox(box, max(1, available_width) / max(1, box.width))]
 
 
 def render_markdown_handwriting(
@@ -1568,6 +1588,14 @@ def render_markdown_handwriting(
                 while (box.width > available_width or box.height > max_line_height) and size > min_formula_size:
                     size = max(min_formula_size, int(size * 0.9))
                     box = latex_to_box(math_line, fonts, size)
+                if box.width > available_width or box.height > max_line_height:
+                    box = ScaledBox(
+                        box,
+                        min(
+                            max(1, available_width) / max(1, box.width),
+                            max(1, max_line_height) / max(1, box.height),
+                        ),
+                    )
                 if box.width > available_width:
                     for wrapped in _layout_inline([box], available_width, config.word_spacing):
                         draw_line(wrapped, extra_gap=config.line_spacing // 2, center=True)
