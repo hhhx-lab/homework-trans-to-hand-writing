@@ -228,6 +228,32 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("ℜ", "z", "ℑ", "ℓ", "ℏ", "ℵ", "℘"):
             self.assertIn(token, debug_text)
 
+    def test_logic_relation_and_special_arrow_commands_render_as_symbols(self):
+        debug_text = latex_to_debug_text(
+            r"\neg p+\implies q+\Longrightarrow r+\Longleftrightarrow s+"
+            r"a\prec b+a\preceq b+a\succ b+a\succeq b+a\ll b+a\gg b+"
+            r"a\asymp b+a\doteq b+a\hookrightarrow b+a\twoheadrightarrow b+"
+            r"a\rightsquigarrow b+A\smallsetminus B+A\sqcup B",
+            FONT_PATH,
+        )
+        self.assertNotRegex(
+            debug_text,
+            r"\\|neg|implies|Longrightarrow|Longleftrightarrow|prec|preceq|succ|succeq|"
+            r"asymp|doteq|hookrightarrow|twoheadrightarrow|rightsquigarrow|smallsetminus|sqcup",
+        )
+        for token in ("¬", "⇒", "⟹", "⟺", "≺", "≼", "≻", "≽", "≪", "≫", "≍", "≐", "↪", "↠", "↝", "∖", "⊔"):
+            self.assertIn(token, debug_text)
+
+    def test_modular_phantom_and_text_box_helpers_do_not_render_control_words(self):
+        debug_text = latex_to_debug_text(
+            r"\limsup_{n\to\infty}a_n+\liminf_{n\to\infty}b_n+"
+            r"\injlim X+\projlim Y+a\bmod n+a\pod{n}+x\phantom{abc}y+x\mbox{ text }",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|limsup|liminf|injlim|projlim|bmod|pod|phantom|mbox|abc")
+        for token in ("lim sup", "lim inf", "inj lim", "proj lim", "mod", "(n)", "xy", "text"):
+            self.assertIn(token, debug_text)
+
     def test_escaped_accent_commands_render_as_decorations(self):
         debug_text = latex_to_debug_text(r"\~{\pi}+\~\pi+\'{e}+\`{a}+\"{u}+x^\pi", FONT_PATH)
         self.assertNotIn("\\", debug_text)

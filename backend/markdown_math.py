@@ -19,10 +19,18 @@ INLINE_PAREN_RE = re.compile(r"\\\((.*?)\\\)", re.S)
 DISPLAY_BRACKET_RE = re.compile(r"\\\[(.*?)\\\]", re.S)
 LATEX_COMMAND_NAMES = (
     "scriptscriptstyle",
+    "Longleftrightarrow",
+    "Longrightarrow",
+    "Longleftarrow",
     "Leftrightarrow",
     "leftrightarrow",
     "xrightarrow",
     "xleftarrow",
+    "twoheadrightarrow",
+    "twoheadleftarrow",
+    "rightsquigarrow",
+    "hookrightarrow",
+    "hookleftarrow",
     "operatorname",
     "displaystyle",
     "overrightarrow",
@@ -47,6 +55,7 @@ LATEX_COMMAND_NAMES = (
     "textstyle",
     "scriptstyle",
     "therefore",
+    "smallsetminus",
     "nonumber",
     "substack",
     "subarray",
@@ -80,10 +89,21 @@ LATEX_COMMAND_NAMES = (
     "ell",
     "notag",
     "middle",
+    "hphantom",
+    "vphantom",
+    "phantom",
     "multirow",
     "mapsto",
+    "implies",
     "notin",
     "pmod",
+    "bmod",
+    "preceq",
+    "succeq",
+    "limsup",
+    "liminf",
+    "injlim",
+    "projlim",
     "cfrac",
     "dfrac",
     "tfrac",
@@ -100,6 +120,8 @@ LATEX_COMMAND_NAMES = (
     "fbox",
     "hline",
     "cline",
+    "mbox",
+    "hbox",
     "sout",
     "bcancel",
     "xcancel",
@@ -113,6 +135,7 @@ LATEX_COMMAND_NAMES = (
     "lim",
     "ref",
     "tag",
+    "pod",
     "sum",
     "int",
     "forall",
@@ -120,6 +143,8 @@ LATEX_COMMAND_NAMES = (
     "nabla",
     "approx",
     "equiv",
+    "asymp",
+    "doteq",
     "subset",
     "supset",
     "propto",
@@ -174,9 +199,13 @@ LATEX_COMMAND_NAMES = (
     "lor",
     "land",
     "wedge",
+    "sqcup",
+    "sqcap",
     "oplus",
     "otimes",
     "neq",
+    "neg",
+    "lnot",
     "not",
     "leq",
     "geq",
@@ -198,6 +227,10 @@ LATEX_COMMAND_NAMES = (
     "ne",
     "pm",
     "Pr",
+    "prec",
+    "succ",
+    "ll",
+    "gg",
     "ln",
     "bm",
     "Re",
@@ -211,13 +244,16 @@ DISPLAY_COMMAND_RE = LATEX_NAMED_COMMAND_RE
 MATH_RELATION_RE = re.compile(
     r"[=<>≤≥≠≈≡∈∉⊥∥→←⇒⇐↔⇔⊂⊆⊃⊇∝]|"
     r"\\(?:leqslant|geqslant|leq|geq|le|ge|neq|ne|approx|sim|cong|simeq|equiv|"
-    r"pmod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
-    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|Rightarrow|Leftarrow|leftrightarrow|Leftrightarrow|mapsto|middle)(?![A-Za-z])"
+    r"pmod|bmod|pod|perp|parallel|in|notin|ni|subset|subseteq|supset|supseteq|propto|"
+    r"prec|preceq|succ|succeq|ll|gg|asymp|doteq|smallsetminus|sqcup|sqcap|"
+    r"to|rightarrow|leftarrow|xrightarrow|xleftarrow|hookrightarrow|hookleftarrow|twoheadrightarrow|twoheadleftarrow|rightsquigarrow|"
+    r"Rightarrow|Leftarrow|Longrightarrow|Longleftarrow|leftrightarrow|Leftrightarrow|Longleftrightarrow|mapsto|implies|middle)(?![A-Za-z])"
 )
 INLINE_STRUCTURAL_COMMAND_RE = re.compile(
     r"\\(?:frac|dfrac|tfrac|cfrac|sqrt|binom|pmod|partial|xrightarrow|xleftarrow|substack|"
     r"boxed|fbox|cancel|bcancel|xcancel|sout|color|textcolor|multicolumn|multirow|"
-    r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|eqref|ref)(?![A-Za-z])"
+    r"hline|cline|acute|grave|breve|check|mathring|mathscr|mathds|bm|Re|Im|ell|hbar|aleph|wp|"
+    r"bmod|pod|phantom|hphantom|vphantom|mbox|hbox|limsup|liminf|injlim|projlim|eqref|ref)(?![A-Za-z])"
 )
 TEXT_MATH_BOUNDARY_RE = re.compile(r"[\u4e00-\u9fff，。；：！？、]")
 STYLE_COMMAND_RE = re.compile(r"\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b")

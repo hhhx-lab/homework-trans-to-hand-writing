@@ -83,10 +83,19 @@ SYMBOLS = {
     "leftarrow": "←",
     "Rightarrow": "⇒",
     "Leftarrow": "⇐",
+    "Longrightarrow": "⟹",
+    "Longleftarrow": "⟸",
     "leftrightarrow": "↔",
     "Leftrightarrow": "⇔",
+    "Longleftrightarrow": "⟺",
     "iff": "↔",
+    "implies": "⇒",
     "mapsto": "↦",
+    "hookrightarrow": "↪",
+    "hookleftarrow": "↩",
+    "twoheadrightarrow": "↠",
+    "twoheadleftarrow": "↞",
+    "rightsquigarrow": "↝",
     "gets": "←",
     "uparrow": "↑",
     "downarrow": "↓",
@@ -97,6 +106,7 @@ SYMBOLS = {
     "subseteq": "⊆",
     "supset": "⊃",
     "supseteq": "⊇",
+    "smallsetminus": "∖",
     "varnothing": "∅",
     "emptyset": "∅",
     "partial": "∂",
@@ -124,6 +134,18 @@ SYMBOLS = {
     "land": "∧",
     "vee": "∨",
     "lor": "∨",
+    "neg": "¬",
+    "lnot": "¬",
+    "prec": "≺",
+    "preceq": "≼",
+    "succ": "≻",
+    "succeq": "≽",
+    "ll": "≪",
+    "gg": "≫",
+    "asymp": "≍",
+    "doteq": "≐",
+    "sqcup": "⊔",
+    "sqcap": "⊓",
     "oplus": "⊕",
     "otimes": "⊗",
     "perp": "⊥",
@@ -162,7 +184,18 @@ SYMBOLS = {
     "wp": "℘",
 }
 
-BIG_OPERATORS = {"sum": "∑", "int": "∫", "iint": "∬", "iiint": "∭", "prod": "∏", "lim": "lim"}
+BIG_OPERATORS = {
+    "sum": "∑",
+    "int": "∫",
+    "iint": "∬",
+    "iiint": "∭",
+    "prod": "∏",
+    "lim": "lim",
+    "limsup": "lim sup",
+    "liminf": "lim inf",
+    "injlim": "inj lim",
+    "projlim": "proj lim",
+}
 MATRIX_ENVS = {
     "matrix",
     "smallmatrix",
@@ -1121,6 +1154,11 @@ class LatexParser:
             self._read_group_text()
             self._skip_space()
             return self._parse_group() if self.pos < len(self.text) and self.text[self.pos] == "{" else TextBox("", self.fonts, self.size)
+        if name in {"phantom", "hphantom", "vphantom"}:
+            self._read_group_text()
+            return TextBox("", self.fonts, self.size)
+        if name in {"mbox", "hbox"}:
+            return TextBox(self._read_group_text(), self.fonts, self.size)
         if name in {"boxed", "fbox"}:
             return BoxedBox(self._parse_group(0.9), self.size)
         if name in {"cancel", "bcancel", "xcancel", "sout"}:
@@ -1180,10 +1218,12 @@ class LatexParser:
         if name == "underbrace":
             child = self._parse_group(0.9)
             return ScriptBox(child, None, TextBox("⏟", self.fonts, max(8, int(self.size * 0.7))), limits=True)
-        if name in {"pmod", "mod"}:
-            content = self._parse_group(0.82) if name == "pmod" else TextBox("mod", self.fonts, max(8, int(self.size * 0.86)))
+        if name in {"pmod", "pod", "mod", "bmod"}:
+            content = self._parse_group(0.82) if name in {"pmod", "pod"} else TextBox("mod", self.fonts, max(8, int(self.size * 0.86)))
             if name == "pmod":
                 return HBox([TextBox("(mod ", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
+            if name == "pod":
+                return HBox([TextBox("(", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
             return content
         if name == "tag":
             self._skip_optional_star()
@@ -1250,7 +1290,7 @@ class LatexParser:
                 sup = script
             else:
                 sub = script
-        limits = limits_override if limits_override is not None else base.debug_text() in {"∑", "∫", "∬", "∭", "∏", "lim"}
+        limits = limits_override if limits_override is not None else base.debug_text() in {"∑", "∫", "∬", "∭", "∏", "lim", "lim sup", "lim inf", "inj lim", "proj lim"}
         return ScriptBox(base, sup, sub, limits=limits) if sup or sub else base
 
     def _skip_optional(self) -> None:

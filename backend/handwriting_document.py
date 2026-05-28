@@ -160,6 +160,8 @@ def plainify_latex_text(text: str) -> str:
     text = re.sub(r"\\(?:multicolumn|multirow)\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\(?:color|textcolor)\s*\{[^{}]*\}\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\color\s*\{[^{}]*\}", "", text)
+    text = re.sub(r"\\(?:phantom|hphantom|vphantom)\s*\{[^{}]*\}", "", text)
+    text = re.sub(r"\\(?:mbox|hbox)\s*\{([^{}]*)\}", r"\1", text)
     text = re.sub(r"\\(?:boxed|fbox)\s*\{([^{}]*)\}", r"[\1]", text)
     text = re.sub(
         r"\\(?:cancel|bcancel|xcancel|sout|overparen|underparen|overleftarrow|underleftarrow|underrightarrow)\s*\{([^{}]*)\}",
@@ -187,6 +189,7 @@ def plainify_latex_text(text: str) -> str:
     text = _replace_latex_command(text, "lbrace", "@@LBRACE@@")
     text = _replace_latex_command(text, "rbrace", "@@RBRACE@@")
     text = re.sub(r"\\not\s*\\in(?![A-Za-z])", "∉", text)
+    text = re.sub(r"\\pod\s*\{([^{}]*)\}", r"(\1)", text)
     text = re.sub(r"\\pmod\s*\{([^{}]*)\}", r"mod \1", text)
     symbol_replacements = {
         "leqslant": "≤",
@@ -211,6 +214,15 @@ def plainify_latex_text(text: str) -> str:
         "colon": ":",
         "rightarrow": "→",
         "leftarrow": "←",
+        "Longrightarrow": "⟹",
+        "Longleftarrow": "⟸",
+        "Longleftrightarrow": "⟺",
+        "implies": "⇒",
+        "hookrightarrow": "↪",
+        "hookleftarrow": "↩",
+        "twoheadrightarrow": "↠",
+        "twoheadleftarrow": "↞",
+        "rightsquigarrow": "↝",
         "to": "→",
         "lparen": "(",
         "rparen": ")",
@@ -224,6 +236,24 @@ def plainify_latex_text(text: str) -> str:
         "hbar": "ℏ",
         "aleph": "ℵ",
         "wp": "℘",
+        "neg": "¬",
+        "lnot": "¬",
+        "prec": "≺",
+        "preceq": "≼",
+        "succ": "≻",
+        "succeq": "≽",
+        "ll": "≪",
+        "gg": "≫",
+        "asymp": "≍",
+        "doteq": "≐",
+        "smallsetminus": "∖",
+        "sqcup": "⊔",
+        "sqcap": "⊓",
+        "bmod": "mod",
+        "limsup": "lim sup",
+        "liminf": "lim inf",
+        "injlim": "inj lim",
+        "projlim": "proj lim",
         "infty": "∞",
         "times": "×",
         "cdot": "·",

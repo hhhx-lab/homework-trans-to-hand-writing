@@ -100,6 +100,15 @@ class HandwritingDocumentTests(unittest.TestCase):
         for token in ("F", "1", "x", "ℜ", "z", "ℑ", "ℓ", "ℏ"):
             self.assertIn(token, text)
 
+    def test_plainify_latex_text_preserves_logic_modular_and_text_box_helpers(self):
+        text = plainify_latex_text(
+            r"\neg p+\implies q+a\prec b+a\hookrightarrow b+a\bmod n+a\pod{n}+"
+            r"x\phantom{abc}y+x\mbox{ text }"
+        )
+        self.assertNotRegex(text, r"\\|neg|implies|prec|hookrightarrow|bmod|pod|phantom|mbox|abc")
+        for token in ("¬", "p", "⇒", "q", "≺", "↪", "mod", "n", "xy", "text"):
+            self.assertIn(token, text)
+
     def test_docx_inspection_detects_broad_latex_residuals(self):
         with tempfile.TemporaryDirectory(prefix="handwriting_docx_residual_") as tmp:
             docx = Path(tmp) / "raw_latex.docx"
