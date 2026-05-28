@@ -62,6 +62,10 @@ SYMBOLS = {
     "geq": "≥",
     "geqslant": "≥",
     "neq": "≠",
+    "ne": "≠",
+    "equiv": "≡",
+    "cong": "≅",
+    "simeq": "≃",
     "approx": "≈",
     "sim": "∼",
     "infty": "∞",
@@ -101,10 +105,12 @@ SYMBOLS = {
     "exists": "∃",
     "in": "∈",
     "notin": "∉",
+    "ni": "∋",
     "mid": "|",
     "vert": "|",
     "lvert": "|",
     "rvert": "|",
+    "|": "‖",
     "langle": "〈",
     "rangle": "〉",
     "lceil": "⌈",
@@ -117,12 +123,28 @@ SYMBOLS = {
     "lor": "∨",
     "oplus": "⊕",
     "otimes": "⊗",
+    "perp": "⊥",
+    "parallel": "∥",
+    "angle": "∠",
+    "triangle": "△",
+    "therefore": "∴",
+    "because": "∵",
+    "colon": ":",
     "circ": "∘",
     "star": "⋆",
     "propto": "∝",
     "degree": "°",
     "prime": "′",
     "Pr": "P",
+    "min": "min",
+    "max": "max",
+    "sup": "sup",
+    "inf": "inf",
+    "arg": "arg",
+    "det": "det",
+    "dim": "dim",
+    "ker": "ker",
+    "gcd": "gcd",
     "ln": "ln",
     "exp": "exp",
     "sin": "sin",
@@ -139,6 +161,10 @@ GROUP_WRAPPERS = {
     "mathbf",
     "mathbb",
     "mathcal",
+    "mathfrak",
+    "mathsf",
+    "mathtt",
+    "mathit",
     "operatorname",
     "text",
     "textrm",
@@ -152,6 +178,7 @@ GROUP_WRAPPERS = {
     "widetilde",
 }
 SIZE_DELIMITERS = {"big", "Big", "bigg", "Bigg", "bigl", "bigr", "Bigl", "Bigr", "biggl", "biggr", "Biggl", "Biggr"}
+SPACE_COMMANDS = {"quad", "qquad", "enspace", "hspace", "vspace"}
 LATEX_RESIDUAL_RE = re.compile(
     r"\\(?:frac|sqrt|sum|int|begin|end|left|right|mathbf|mathrm|mathbb|operatorname|textstyle|displaystyle|ldots|cdots|dots)"
 )
@@ -800,6 +827,31 @@ class LatexParser:
         children.append(TextBox(")", self.fonts, self.size))
         return HBox(children, gap=max(0, self.size // 24))
 
+    def _parse_not_command(self) -> Box:
+        self._skip_space()
+        if self.pos >= len(self.text):
+            return TextBox("¬", self.fonts, self.size)
+        if self.text[self.pos] == "\\":
+            next_name = self._read_command_name()
+            negated = {
+                "in": "∉",
+                "ni": "∌",
+                "subset": "⊄",
+                "subseteq": "⊈",
+                "supset": "⊅",
+                "supseteq": "⊉",
+                "le": "≰",
+                "leq": "≰",
+                "ge": "≱",
+                "geq": "≱",
+                "equiv": "≢",
+                "=": "≠",
+            }
+            return TextBox(negated.get(next_name, "¬" + SYMBOLS.get(next_name, next_name)), self.fonts, self.size)
+        ch = self.text[self.pos]
+        self.pos += 1
+        return TextBox({"=": "≠", "<": "≮", ">": "≯"}.get(ch, "¬" + ch), self.fonts, self.size)
+
     def _parse_command(self) -> Box:
         name = self._read_command_name()
         if name in {"left", "right"}:
@@ -809,6 +861,11 @@ class LatexParser:
             return TextBox("", self.fonts, self.size)
         if name in SIZE_DELIMITERS:
             return TextBox("", self.fonts, self.size)
+        if name in SPACE_COMMANDS:
+            self._skip_optional()
+            if name in {"hspace", "vspace"}:
+                self._read_raw_group()
+            return TextBox(" ", self.fonts, self.size // 2)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in GROUP_WRAPPERS:
@@ -838,6 +895,13 @@ class LatexParser:
         if name == "underbrace":
             child = self._parse_group(0.9)
             return ScriptBox(child, None, TextBox("⏟", self.fonts, max(8, int(self.size * 0.7))), limits=True)
+        if name in {"pmod", "mod"}:
+            content = self._parse_group(0.82) if name == "pmod" else TextBox("mod", self.fonts, max(8, int(self.size * 0.86)))
+            if name == "pmod":
+                return HBox([TextBox("(mod ", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
+            return content
+        if name == "not":
+            return self._parse_not_command()
         if name == "begin":
             env = self._read_group_text().strip()
             return self._parse_environment(env)

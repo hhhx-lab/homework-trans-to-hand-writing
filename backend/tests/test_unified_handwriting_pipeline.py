@@ -160,6 +160,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         box = TextBox("↔", FontCache(font), 52)
         self.assertIsNotNone(box.font.getmask("↔").getbbox())
 
+    def test_more_common_latex_commands_render_as_math_symbols(self):
+        expr = (
+            r"\mathcal{F}+\mathfrak{c}+a\equiv b\pmod{n},\quad "
+            r"x\perp y,\quad l\parallel m,\quad \angle ABC,\quad "
+            r"\therefore x\ne 0,\because y\leq z,\colon,\quad y\not\in B,\quad \|v\|"
+        )
+        debug_text = latex_to_debug_text(expr, FONT_PATH)
+        self.assertNotIn("\\", debug_text)
+        self.assertNotRegex(
+            debug_text,
+            r"mathfrak|equiv|pmod|quad|perp|parallel|angle|therefore|because|colon|not∈",
+        )
+        for token in ("F", "c", "≡", "mod", "n", "⊥", "∥", "∠", "ABC", "∴", "≠", "∵", "≤", ":", "∉", "B", "‖v‖"):
+            self.assertIn(token, debug_text)
+
     def test_mineru_sanitize_preserves_image_placeholders(self):
         sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")
         self.assertIn("题面", sanitized)
