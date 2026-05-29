@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from collections import Counter
 from pathlib import Path
 from unittest import mock
 
@@ -1405,11 +1406,48 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             "平 方程给 稳 $\\pi_n=\\pi_{n-1}p_{n-1}$ ，故若上式有限，\n\n"
             "若级数发散，则不存在平 概率分布。稳\n\n"
             "若 $\\mu_0=\\pi$ 为平 分布，则 稳 $\\mu_n=\\pi$ 。"
+            "所以 \\~π 为平稳分布；不可约且有平稳分布，故稳 稳 Y 正常返。\n\n"
+            "反之若 X 正常返，则有平 概率； 稳 双随机给出不变测度。\n\n"
+            "故平稳分布只稳 能与常数测度成比例；无限状态无法归一化。\n\n"
+            "故平 分布只稳 能与常数测度成比例；无限状态无法归一化。\n\n"
+            "若 X 可逆，则有可逆平稳分布，由 稳 (1) 知 S 有限。\n\n"
+            "若 X 可逆，则有可逆平 分布，由 稳 (1) 知 S 有限。\n\n"
+            "有限双随机不可约链的平 分稳布为均匀分布。"
         )
         repaired = repair_extracted_markdown_text(markdown)
-        for token in ("平稳分布由细致平衡", "平稳方程给", "平稳概率分布", "为平稳分布，则"):
+        for token in (
+            "平稳分布由细致平衡",
+            "平稳方程给",
+            "平稳概率分布",
+            "为平稳分布，则",
+            "故 Y 正常返",
+            "有平稳概率；双随机",
+            "平稳分布只能与常数测度成比例",
+            "平稳分布，由 (1)",
+            "平稳分布为均匀分布",
+        ):
             self.assertIn(token, repaired)
-        self.assertNotRegex(repaired, r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳")
+        self.assertNotRegex(
+            repaired,
+            r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳|故稳|只稳|分稳布|由 稳",
+        )
+
+    def test_repair_extracted_markdown_removes_random_process_math_hallucinations(self):
+        markdown = (
+            "一次 i-循环的平均长度为 $m _ { i i }$ ，其中访问 j 的平均次数为 $e _ { i j \\epsilon }$ 。故\n\n"
+            "验：取 j = i 时 $e_{i i} {=} 1$ ，得到恒等式 "
+            "$\\pi _ { i } \\overline { { - } } \\pi _ { i _ { \\circ } }$\n\n"
+            "设 $N _ { n } { = } \\sum _ { k = 1 } ^ { n } "
+            "1 _ { \\{ X _ { k } = j \\} } { \\mathfrak { c } }$ 。从 j 出发，\n\n"
+            "设正常返态 i 所在互通类为 $C _ { \\circ }$ 。常返类必闭，"
+        )
+        repaired = repair_extracted_markdown_text(markdown)
+
+        self.assertIn("$e_{i j}$", repaired)
+        self.assertIn("$\\pi_{i} = \\pi_{i}$", repaired)
+        self.assertIn("1_{ \\{ X_{k} = j \\} }$ 。从 j 出发", repaired)
+        self.assertIn("互通类为 $C$ 。", repaired)
+        self.assertNotRegex(repaired, r"\\epsilon|\\overline|\\circ|\\mathfrak")
 
     def test_random_process_pdf_extraction_restores_key_body_text_when_available(self):
         sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
@@ -1420,7 +1458,127 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         markdown = result["markdown"]
         for token in ("平稳分布", "平稳方程", "故若上式有限", "平稳概率分布", "归纳得证"):
             self.assertIn(token, markdown)
-        self.assertNotRegex(markdown, r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳")
+        self.assertNotRegex(
+            markdown,
+            r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳|故稳|只稳|分稳布|由 稳",
+        )
+
+    def assert_random_process_debug_matches_source_counts(self, source_text, debug_text, *, require_precise_tokens=False):
+        compact_debug = re.sub(r"\s+", "", debug_text)
+        debug_for_counts = re.sub(r"第\d+页", "", debug_text)
+        source_cjk = re.findall(r"[\u4e00-\u9fff]", source_text)
+        debug_cjk = re.findall(r"[\u4e00-\u9fff]", debug_for_counts)
+
+        self.assertFalse(Counter(source_cjk) - Counter(debug_cjk))
+        self.assertEqual(Counter(re.findall(r"\d", source_text)), Counter(re.findall(r"\d", debug_for_counts)))
+        self.assertNotRegex(
+            debug_text,
+            r"operatorname|backslash|equin|(?<!Lef)tright|Lefttright|e_ijε|π_i¯|只稳|故稳|由 稳",
+        )
+        if not require_precise_tokens:
+            return
+        for token in (
+            "平稳分布由细致平衡",
+            "状态i表示A瓶中黑球数",
+            "若π,ρ是两个不同平稳分布",
+            "0常返⇔",
+            "0正常返⇔",
+            "平稳方程给",
+            "若级数发散，则不存在平稳概率分布",
+            "平均次数为e_ij",
+            "π_i=π_i",
+            "设N_n=∑_k=1^n1_{X_k=j}。从j出发",
+            "设目标为a=2026",
+            "平稳分布只能与常数测度成比例",
+            "P为有限阶对称矩阵",
+        ):
+            self.assertIn(token, compact_debug)
+
+    def test_random_process_pdf_fallback_render_debug_preserves_cjk_and_digit_counts_when_available(self):
+        sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
+        if not sample_pdf.exists():
+            self.skipTest("随机过程三次作业答案.pdf sample is not available")
+
+        import fitz
+
+        with fitz.open(sample_pdf) as doc:
+            source_text = "\n".join(page.get_text(sort=True) for page in doc)
+        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+            result = extract_source_to_markdown(sample_pdf)
+        debug_text = markdown_render_debug_text(result["markdown"], FONT_PATH)
+
+        self.assert_random_process_debug_matches_source_counts(source_text, debug_text)
+
+    def test_random_process_pdf_live_mineru_render_debug_preserves_counts_when_configured(self):
+        sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
+        if not sample_pdf.exists():
+            self.skipTest("随机过程三次作业答案.pdf sample is not available")
+
+        import fitz
+
+        with fitz.open(sample_pdf) as doc:
+            source_text = "\n".join(page.get_text(sort=True) for page in doc)
+        result = extract_source_to_markdown(sample_pdf)
+        if result.get("source") != "mineru":
+            self.skipTest("MinerU is not configured; fallback coverage already exercises the sample")
+
+        debug_text = markdown_render_debug_text(result["markdown"], FONT_PATH)
+        self.assert_random_process_debug_matches_source_counts(
+            source_text, debug_text, require_precise_tokens=True
+        )
+
+    def test_random_process_pdf_render_audit_draws_all_debug_content_when_available(self):
+        sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
+        if not sample_pdf.exists():
+            self.skipTest("随机过程三次作业答案.pdf sample is not available")
+
+        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+            result = extract_source_to_markdown(sample_pdf)
+        expected_debug = markdown_render_debug_text(result["markdown"], FONT_PATH)
+
+        background = Image.new("RGB", (900, 1300), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 42)
+        config = HandwritingRenderConfig(
+            line_spacing=86,
+            font_size=42,
+            left_margin=56,
+            top_margin=42,
+            right_margin=56,
+            bottom_margin=42,
+            word_spacing=1,
+            perturb_x_sigma=1,
+            perturb_y_sigma=1,
+            perturb_theta_sigma=0.2,
+            ink_depth_sigma=4,
+        )
+        drawn_debug: list[str] = []
+        drawn_bounds: list[tuple[int, int, int, int, int, str]] = []
+        pages = render_markdown_handwriting(
+            result["markdown"],
+            background,
+            font,
+            config,
+            draw_debug_sink=drawn_debug,
+            draw_bounds_sink=drawn_bounds,
+        )
+
+        self.assertGreater(len(pages), 1)
+        self.assertTrue(drawn_debug)
+        self.assertTrue(drawn_bounds)
+        self.assertEqual(re.sub(r"\s+", "", expected_debug), re.sub(r"\s+", "", "".join(drawn_debug)))
+        for page_number, left, top, right, bottom, text in drawn_bounds:
+            with self.subTest(text=text[:32]):
+                self.assertGreaterEqual(page_number, 1)
+                self.assertLessEqual(page_number, len(pages))
+                self.assertGreaterEqual(left, 0)
+                self.assertGreaterEqual(top, 0)
+                self.assertLessEqual(right, background.width)
+                self.assertLessEqual(bottom, background.height)
+                rendered_crop = pages[page_number - 1].crop((left, top, right, bottom))
+                blank_crop = background.crop((left, top, right, bottom))
+                self.assertIsNotNone(ImageChops.difference(blank_crop, rendered_crop).getbbox())
+        self.assertIsNotNone(ImageChops.difference(background, pages[0]).getbbox())
+        self.assertIsNotNone(ImageChops.difference(background, pages[-1]).getbbox())
 
     def test_markdown_renderer_outputs_nonblank_image_and_docx(self):
         background = Image.new("RGB", (900, 1100), "white")

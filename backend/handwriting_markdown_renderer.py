@@ -2098,6 +2098,8 @@ def render_markdown_handwriting(
     font,
     config: HandwritingRenderConfig,
     progress_hook: Callable[[str, str, int], None] | None = None,
+    draw_debug_sink: list[str] | None = None,
+    draw_bounds_sink: list[tuple[int, int, int, int, int, str]] | None = None,
 ) -> list[Image.Image]:
     markdown = normalize_math_markdown(markdown)
     fonts = FontCache(font)
@@ -2140,6 +2142,10 @@ def render_markdown_handwriting(
             y = max(min_y, baseline_y - line.baseline)
         x = config.left_margin + x_guard + ((available_width - line.width) // 2 if center and line.width < available_width else 0)
         line.draw(ctx, x, y)
+        if draw_debug_sink is not None:
+            draw_debug_sink.append(line.debug_text())
+        if draw_bounds_sink is not None:
+            draw_bounds_sink.append((len(pages) + 1, x, y, x + line.width, y + line.height, line.debug_text()))
         baseline_y += line_height
 
     for index, (kind, content) in enumerate(_blocks(markdown), start=1):

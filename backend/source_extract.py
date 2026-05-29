@@ -18,6 +18,11 @@ def repair_extracted_markdown_text(markdown: str) -> str:
     """Repair conservative OCR/PDF extraction ordering glitches before math normalization."""
     text = markdown or ""
     repairs = (
+        (r"故稳\s+稳\s+Y", "故 Y"),
+        (r"有平\s+概率；\s+稳\s+双随机", "有平稳概率；双随机"),
+        (r"平稳分布只稳\s*能", "平稳分布只能"),
+        (r"平稳分布，由\s+稳\s+(\(\d+\))", r"平稳分布，由 \1"),
+        (r"平\s+分\s*稳\s*布", "平稳分布"),
         (r"平\s+分布由细致平衡\s+稳", "平稳分布由细致平衡"),
         (r"平\s+分布满足\s+稳", "平稳分布满足"),
         (r"平\s+分布，则\s+稳", "平稳分布，则"),
@@ -35,7 +40,22 @@ def repair_extracted_markdown_text(markdown: str) -> str:
     )
     for pattern, replacement in repairs:
         text = re.sub(pattern, replacement, text)
+    text = re.sub(r"平稳分布只稳\s*能", "平稳分布只能", text)
+    text = re.sub(r"平稳分布，由\s+稳\s+(\(\d+\))", r"平稳分布，由 \1", text)
+    text = re.sub(r"e\s*_\s*\{\s*i\s+j\s+\\epsilon\s*\}", r"e_{i j}", text)
+    text = re.sub(
+        r"\\pi\s*_\s*\{\s*i\s*\}\s*\\overline\s*\{\s*\{?\s*-\s*\}?\s*\}\s*\\pi\s*_\s*\{\s*i\s*_\s*\{\s*\\circ\s*\}\s*\}",
+        r"\\pi_{i} = \\pi_{i}",
+        text,
+    )
+    text = re.sub(
+        r"1\s*_\s*\{\s*\\\{\s*X\s*_\s*\{\s*k\s*\}\s*=\s*j\s*\\\}\s*\}\s*\{\s*\\mathfrak\s*\{\s*c\s*\}\s*\}",
+        r"1_{ \\{ X_{k} = j \\} }",
+        text,
+    )
+    text = re.sub(r"(互通类为\s*\$)C\s*_\s*\{\s*\\circ\s*\}(\$\s*。)", r"\1C\2", text)
     text = re.sub(r"(平稳(?:概率分布|分布|方程)(?:由细致平衡|满足|给|为|仍成立)?)(?:\s+稳)", r"\1", text)
+    text = re.sub(r"(?:[。；]\s*)稳(?=\s*(?:\n|$|[A-Z\\$（(]))", lambda match: match.group(0).replace("稳", ""), text)
     return text
 
 
