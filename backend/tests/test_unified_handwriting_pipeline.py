@@ -75,6 +75,18 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("…", text)
         self.assertIn("[[1,2];[3,4]]", text)
 
+    def test_math_symbols_fallback_to_handwriting_font_assets_before_system_fonts(self):
+        qingye_font_path = Path(__file__).resolve().parents[1] / "font_assets" / "青叶手写体.ttf"
+        qingye_font = ImageFont.truetype(str(qingye_font_path), 56)
+        cache = FontCache(qingye_font)
+
+        for symbol in "πλμΣρη∑∏∫∞≠≤≥∈":
+            with self.subTest(symbol=symbol):
+                resolved = cache.get_for_text(symbol, 56)
+                resolved_path = Path(getattr(resolved, "path", ""))
+                self.assertEqual(resolved_path.parent.name, "font_assets")
+                self.assertNotEqual(resolved_path.name, "青叶手写体.ttf")
+
     def test_markdown_math_normalizer_repairs_lone_display_delimiter_and_docx_math(self):
         markdown = (
             r"P \left(Y_{n+k}=j_{n+k}, 1 \leq k \leq m / X_n=i\right)"
@@ -1356,6 +1368,21 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         box = TextBox("↔", FontCache(font), 52)
         self.assertIsNotNone(box.font.getmask("↔").getbbox())
 
+    def test_broad_unsupported_math_symbols_use_handwritten_synthesis(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        cache = FontCache(font)
+        symbols = "ϑϱςϖ∂∇∀∃∄∉∋∤⊂⊃⊆⊇⊈⊉⊕⊗↔⇔↦↝⌈⌉⌊⌋≼≽⋘⋙∬∭∯∰⨁⨂"
+
+        for symbol in symbols:
+            with self.subTest(symbol=symbol):
+                box = TextBox(symbol, cache, 52)
+                self.assertTrue(
+                    box.uses_handwritten_symbol or box.uses_synthetic_handwriting,
+                    f"{symbol} should avoid raw system math font rendering",
+                )
+                self.assertGreater(box.width, 0)
+                self.assertGreater(box.height, 0)
+
     def test_more_common_latex_commands_render_as_math_symbols(self):
         expr = (
             r"\mathcal{F}+\mathfrak{c}+a\equiv b\pmod{n},\quad "
@@ -1463,6 +1490,18 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳|故稳|只稳|分稳布|由 稳",
         )
 
+    def test_pdf_extraction_uses_text_layer_when_mineru_connection_drops(self):
+        sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
+        if not sample_pdf.exists():
+            self.skipTest("随机过程三次作业答案.pdf sample is not available")
+
+        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=ConnectionResetError("Remote end closed")):
+            result = extract_source_to_markdown(sample_pdf)
+
+        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
+        self.assertIn("平稳分布", result["markdown"])
+        self.assertTrue(result["warnings"])
+
     def assert_random_process_debug_matches_source_counts(self, source_text, debug_text, *, require_precise_tokens=False):
         compact_debug = re.sub(r"\s+", "", debug_text)
         debug_for_counts = re.sub(r"第\d+页", "", debug_text)
@@ -1518,7 +1557,10 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
 
         with fitz.open(sample_pdf) as doc:
             source_text = "\n".join(page.get_text(sort=True) for page in doc)
-        result = extract_source_to_markdown(sample_pdf)
+        try:
+            result = extract_source_to_markdown(sample_pdf)
+        except (MinerUConfigError, MinerUExtractionError, OSError) as exc:
+            self.skipTest(f"MinerU is not available for live extraction: {exc}")
         if result.get("source") != "mineru":
             self.skipTest("MinerU is not configured; fallback coverage already exercises the sample")
 

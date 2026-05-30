@@ -12,7 +12,7 @@ from typing import Callable, Iterable
 from docx import Document
 from docx.shared import Inches
 from markdown_math import LATEX_COMMAND_NAMES, normalize_latex_math, normalize_math_markdown
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 GREEK = {
@@ -525,6 +525,24 @@ DELIMITER_COMMANDS = {
     "rVert": "‖",
     ".": "",
 }
+MATH_SYMBOL_CHARS = frozenset(
+    ch
+    for token in (
+        tuple(GREEK.values())
+        + tuple(SYMBOLS.values())
+        + tuple(BIG_OPERATORS.values())
+        + tuple(DELIMITER_COMMANDS.values())
+    )
+    for ch in token
+    if ch and not ch.isspace()
+)
+HAND_DRAWN_MATH_SYMBOLS = frozenset(
+    "≅≃∼≁≇≉⋯⋮⋱∓⇒⇐⟹⟸⟶⟵⟷↔⇔⟺↦⟼↝↪↩↠↞↼↽⇀⇁⇋⇌↗↘↖↙"
+    "∖⊂⊆⊊⫋⊈⊃⊇⊋⫌⊉⋐⋑⊏⊐⊑⊒⟋⟍∅∂∇∀∃∄∉∋∤⌈⌉⌊⌋"
+    "≺≼≰≱⪇⪈≨≩⋦⋧≦≧⪅⪆≲≳⋖⋗⋘⋙≾≿≶≷≻≽≪≫≍≐≔≕≜"
+    "⊔⊓⊎≀⨿⊕⊗⊠⊞⊟⊡⋉⋊⋋⋌⊨⊢⊣⊩⊫⊪⊬⊭⊮⊯⌣⌢⋈∦⊵⊴"
+    "∘⋆⋄⊤∁⌜⌝⌞⌟⋏⋎⋒⋓⊛⊚⊝∬∭∯∰∐⋃⋂⨆⋁⋀⨁⨂"
+)
 FALLBACK_FONT_PATHS = [
     Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
     Path("/System/Library/Fonts/Supplemental/STIXGeneral.otf"),
@@ -538,6 +556,12 @@ FALLBACK_FONT_PATHS = [
     Path("/usr/share/fonts/opentype/stix-word/STIX-Regular.otf"),
     Path("/usr/share/fonts/truetype/noto/NotoSansMath-Regular.ttf"),
 ]
+HANDWRITING_MATH_FALLBACK_FONT_NAMES = (
+    "华阳手写体.ttf",
+    "神韵英子楷书.ttf",
+    "云烟体.ttf",
+    "李国夫手写体.ttf",
+)
 
 
 def _jitter_guard(sigma: float | int | None) -> int:
@@ -562,6 +586,36 @@ def _font_supports_text(font: ImageFont.FreeTypeFont, text: str) -> bool:
                 return False
         except Exception:
             return False
+    return True
+
+
+def _resolved_font_path(font: ImageFont.FreeTypeFont) -> Path | None:
+    raw = getattr(font, "path", None)
+    if not raw:
+        return None
+    try:
+        path = Path(raw)
+        return path.resolve() if path.exists() else path
+    except Exception:
+        return None
+
+
+def _is_math_symbol_text(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    for ch in stripped:
+        codepoint = ord(ch)
+        if (
+            ch in MATH_SYMBOL_CHARS
+            or 0x2190 <= codepoint <= 0x21FF
+            or 0x2200 <= codepoint <= 0x22FF
+            or 0x27C0 <= codepoint <= 0x27EF
+            or 0x2980 <= codepoint <= 0x29FF
+            or 0x2A00 <= codepoint <= 0x2AFF
+        ):
+            continue
+        return False
     return True
 
 
@@ -590,7 +644,18 @@ class FontCache:
         self.base_font = base_font
         self._cache: dict[int, ImageFont.FreeTypeFont] = {}
         self._fallback_cache: dict[tuple[Path, int], ImageFont.FreeTypeFont] = {}
+        base_path = _resolved_font_path(base_font)
+        font_asset_dir = Path(__file__).resolve().parent / "font_assets"
+        handwriting_paths = [
+            font_asset_dir / name
+            for name in HANDWRITING_MATH_FALLBACK_FONT_NAMES
+            if (font_asset_dir / name).exists() and (font_asset_dir / name).resolve() != base_path
+        ]
+        self._handwriting_paths = {path.resolve() for path in handwriting_paths}
+        if base_path is not None:
+            self._handwriting_paths.add(base_path.resolve() if base_path.exists() else base_path)
         self._fallback_paths = [path for path in FALLBACK_FONT_PATHS if path.exists()]
+        self._fallback_paths = handwriting_paths + [path for path in self._fallback_paths if path not in handwriting_paths]
 
     def get(self, size: int):
         size = max(8, int(size))
@@ -610,6 +675,12 @@ class FontCache:
             if _font_supports_text(fallback, text):
                 return fallback
         return font
+
+    def is_handwriting_font(self, font: ImageFont.FreeTypeFont) -> bool:
+        path = _resolved_font_path(font)
+        if path is None:
+            return False
+        return (path.resolve() if path.exists() else path) in self._handwriting_paths
 
 
 class DrawContext:
@@ -691,11 +762,42 @@ class TextBox(Box):
         self.text = text
         self.size = size
         self.font = fonts.get_for_text(text or " ", size)
-        left, top, right, bottom = self.font.getbbox(text or " ")
-        self.width = max(1, right - left)
-        ascent, descent = self.font.getmetrics()
-        self.baseline = ascent
-        self.height = max(1, ascent + descent, bottom - top)
+        self.uses_handwritten_symbol = len(text) == 1 and text in HAND_DRAWN_MATH_SYMBOLS
+        self.uses_synthetic_handwriting = self._uses_synthetic_handwriting(fonts, self.font, text)
+        if self.uses_handwritten_symbol:
+            self.width, self.height, self.baseline = self._symbol_metrics(text, size)
+        else:
+            left, top, right, bottom = self.font.getbbox(text or " ")
+            self.width = max(1, right - left)
+            ascent, descent = self.font.getmetrics()
+            self.baseline = ascent
+            self.height = max(1, ascent + descent, bottom - top)
+
+    @staticmethod
+    def _uses_synthetic_handwriting(fonts: FontCache, font: ImageFont.FreeTypeFont, text: str) -> bool:
+        return bool(text.strip() and _is_math_symbol_text(text) and not fonts.is_handwriting_font(font))
+
+    @staticmethod
+    def _symbol_metrics(symbol: str, size: int) -> tuple[int, int, int]:
+        width_factor = 0.92
+        if symbol in {"⟹", "⟸", "⟶", "⟵", "⟷", "⟺", "⟼"}:
+            width_factor = 1.55
+        elif symbol in {"↔", "⇔", "⇋", "⇌", "↦", "↝", "↪", "↩", "↠", "↞"}:
+            width_factor = 1.25
+        elif symbol in {"⋯", "⋱", "⋘", "⋙", "≪", "≫", "≶", "≷", "⪅", "⪆"}:
+            width_factor = 1.15
+        elif symbol in {"⋮", "⌈", "⌉", "⌊", "⌋", "⌜", "⌝", "⌞", "⌟"}:
+            width_factor = 0.55
+        elif symbol in {"∬", "∯"}:
+            width_factor = 1.18
+        elif symbol in {"∭", "∰"}:
+            width_factor = 1.42
+        elif symbol in {"⨁", "⨂", "⨆"}:
+            width_factor = 1.18
+        width = max(6, int(size * width_factor))
+        height = max(8, int(size * 1.12))
+        baseline = max(1, int(size * 0.88))
+        return width, height, baseline
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
         dx, dy = ctx.jitter()
@@ -703,6 +805,12 @@ class TextBox(Box):
         if ctx.config.font_size_sigma:
             actual_size = max(8, round(ctx.rand.gauss(self.size, ctx.config.font_size_sigma)))
         font = ctx.fonts.get_for_text(self.text or " ", actual_size)
+        if self.uses_handwritten_symbol:
+            self._draw_handwritten_symbol(ctx, x + dx, y + dy, actual_size)
+            return
+        if self._uses_synthetic_handwriting(ctx.fonts, font, self.text):
+            self._draw_synthetic_text(ctx, font, x + dx, y + dy)
+            return
         angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
         if self.text.strip() and angle_sigma and ctx.depth > 0:
             bbox = font.getbbox(self.text)
@@ -720,6 +828,436 @@ class TextBox(Box):
 
     def debug_text(self) -> str:
         return self.text
+
+    def _draw_synthetic_text(self, ctx: DrawContext, font: ImageFont.FreeTypeFont, x: int, y: int) -> None:
+        bbox = font.getbbox(self.text or " ")
+        pad = max(3, self.size // 9)
+        width = max(1, bbox[2] - bbox[0] + pad * 2)
+        height = max(1, bbox[3] - bbox[1] + pad * 2)
+        mask = Image.new("L", (width, height), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.text((pad - bbox[0], pad - bbox[1]), self.text, fill=255, font=font)
+        if mask.getbbox() is None:
+            ctx.draw.text((x, y), self.text, fill=ctx.color(), font=font)
+            return
+
+        original_alpha = sum(value * count for value, count in enumerate(mask.histogram()))
+        iterations = 2 if self.size >= 58 else 1
+        for _ in range(iterations):
+            candidate = mask.filter(ImageFilter.MinFilter(3))
+            candidate_alpha = sum(value * count for value, count in enumerate(candidate.histogram()))
+            if candidate.getbbox() is not None and candidate_alpha >= original_alpha * 0.28:
+                mask = candidate
+            else:
+                break
+        mask = mask.filter(ImageFilter.GaussianBlur(0.25))
+        layer = Image.new("RGBA", (width, height), ctx.color() + (0,))
+        layer.putalpha(mask)
+
+        angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
+        if self.text.strip() and angle_sigma and ctx.depth > 0:
+            angle = math.degrees(ctx.rand.gauss(0, angle_sigma * 0.35))
+            rotated = layer.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+            target = (x - pad - (rotated.width - width) // 2, y - pad - (rotated.height - height) // 2)
+            ctx.image.paste(rotated.convert(ctx.image.mode), target, rotated)
+        else:
+            ctx.image.paste(layer.convert(ctx.image.mode), (x - pad, y - pad), layer)
+
+    def _draw_handwritten_symbol(self, ctx: DrawContext, x: int, y: int, actual_size: int) -> None:
+        symbol = self.text
+        width = max(6, self.width)
+        height = max(8, self.height)
+        pad = max(2, actual_size // 10)
+        left = x + pad
+        right = x + width - pad
+        top = y + max(1, pad // 2)
+        bottom = y + height - max(2, pad)
+        mid_x = x + width // 2
+        mid_y = y + int(height * 0.52)
+        stroke = max(1, actual_size // 25)
+        wobble = max(1.0, actual_size / 34)
+
+        def line(x1: float, y1: float, x2: float, y2: float, *, w: int | None = None) -> None:
+            ctx.hand_line(round(x1), round(y1), round(x2), round(y2), width=w or stroke, wobble=wobble)
+
+        def poly(points: list[tuple[float, float]], *, w: int | None = None) -> None:
+            ctx.hand_polyline([(round(px), round(py)) for px, py in points], width=w or stroke, wobble=wobble)
+
+        def ellipse(cx: float, cy: float, rx: float, ry: float, start: float = 0, end: float = math.tau) -> None:
+            steps = max(8, int(abs(end - start) * max(rx, ry) / 8))
+            points = [
+                (cx + math.cos(start + (end - start) * i / steps) * rx, cy + math.sin(start + (end - start) * i / steps) * ry)
+                for i in range(steps + 1)
+            ]
+            poly(points)
+
+        def dot(cx: float, cy: float, radius: float | None = None) -> None:
+            r = max(1.4, radius if radius is not None else stroke * 1.35)
+            ctx.draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=ctx.color())
+
+        def wave(ypos: float, amplitude: float, *, x1: float = left, x2: float = right) -> None:
+            span = max(1, x2 - x1)
+            points = [
+                (x1 + span * i / 12, ypos + math.sin(i / 12 * math.tau) * amplitude)
+                for i in range(13)
+            ]
+            poly(points)
+
+        def slash() -> None:
+            line(right - pad // 2, top + pad // 3, left + pad // 2, bottom - pad // 3)
+
+        def draw_less(cx_shift: float = 0, *, greater: bool = False) -> None:
+            lx = left + cx_shift
+            rx = right + cx_shift
+            if greater:
+                poly([(lx, top + pad), (rx, mid_y), (lx, bottom - pad)])
+            else:
+                poly([(rx, top + pad), (lx, mid_y), (rx, bottom - pad)])
+
+        def draw_subset(*, superset: bool = False, squared: bool = False, with_line: bool = False, slash_mark: bool = False) -> None:
+            if squared:
+                vertical = right if superset else left
+                outer = left if superset else right
+                line(vertical, top + pad // 2, vertical, bottom - pad // 2)
+                line(vertical, top + pad // 2, outer, top + pad // 2)
+                line(vertical, bottom - pad // 2, outer, bottom - pad // 2)
+            else:
+                start = -math.pi / 2 if superset else math.pi * 1.5
+                end = math.pi / 2 if superset else math.pi / 2
+                if superset:
+                    ellipse(left + width * 0.38, mid_y, width * 0.34, height * 0.32, -math.pi / 2, math.pi / 2)
+                else:
+                    ellipse(right - width * 0.38, mid_y, width * 0.34, height * 0.32, math.pi / 2, math.pi * 1.5)
+            if with_line:
+                line(left + pad // 2, bottom - pad // 3, right - pad // 2, bottom - pad // 3)
+            if slash_mark:
+                slash()
+
+        def draw_arrow(direction: str = "right", *, double: bool = False, both: bool = False, bar: bool = False, squiggle: bool = False) -> None:
+            if direction in {"ne", "nw", "se", "sw"}:
+                starts = {
+                    "ne": (left, bottom - pad, right, top + pad),
+                    "nw": (right, bottom - pad, left, top + pad),
+                    "se": (left, top + pad, right, bottom - pad),
+                    "sw": (right, top + pad, left, bottom - pad),
+                }
+                sx, sy, ex, ey = starts[direction]
+                line(sx, sy, ex, ey)
+                sign_x = -1 if ex < sx else 1
+                sign_y = -1 if ey < sy else 1
+                line(ex, ey, ex - sign_x * pad, ey)
+                line(ex, ey, ex, ey - sign_y * pad)
+                return
+            y_offsets = (-stroke * 1.5, stroke * 1.5) if double else (0,)
+            for offset in y_offsets:
+                if squiggle:
+                    wave(mid_y + offset, max(1, pad / 2), x1=left, x2=right)
+                else:
+                    line(left, mid_y + offset, right, mid_y + offset)
+            head = max(4, pad)
+            if direction == "left" or both:
+                line(left, mid_y, left + head, mid_y - head * 0.55)
+                line(left, mid_y, left + head, mid_y + head * 0.55)
+            if direction == "right" or both:
+                line(right, mid_y, right - head, mid_y - head * 0.55)
+                line(right, mid_y, right - head, mid_y + head * 0.55)
+            if bar:
+                line(left - pad // 3, mid_y - head, left - pad // 3, mid_y + head)
+
+        if symbol in {"⋯", "⋮", "⋱"}:
+            coords = {
+                "⋯": [(left + (right - left) * t, mid_y) for t in (0.18, 0.5, 0.82)],
+                "⋮": [(mid_x, top + (bottom - top) * t) for t in (0.24, 0.5, 0.76)],
+                "⋱": [(left + (right - left) * t, bottom - (bottom - top) * t) for t in (0.22, 0.5, 0.78)],
+            }[symbol]
+            for cx, cy in coords:
+                dot(cx, cy)
+            return
+
+        if symbol in {"→", "⟶", "↦", "⟼", "↝", "↪", "↠"}:
+            draw_arrow("right", bar=symbol in {"↦", "⟼"}, squiggle=symbol == "↝")
+            if symbol == "↠":
+                draw_arrow("right")
+            return
+        if symbol in {"←", "⟵", "↩", "↞"}:
+            draw_arrow("left")
+            if symbol == "↞":
+                draw_arrow("left")
+            return
+        if symbol in {"↔", "⟷"}:
+            draw_arrow("right", both=True)
+            return
+        if symbol in {"⇒", "⟹"}:
+            draw_arrow("right", double=True)
+            return
+        if symbol in {"⇐", "⟸"}:
+            draw_arrow("left", double=True)
+            return
+        if symbol in {"⇔", "⟺"}:
+            draw_arrow("right", double=True, both=True)
+            return
+        if symbol in {"↗", "↘", "↖", "↙"}:
+            draw_arrow({"↗": "ne", "↘": "se", "↖": "nw", "↙": "sw"}[symbol])
+            return
+        if symbol in {"↼", "↽", "⇀", "⇁"}:
+            draw_arrow("left" if symbol in {"↼", "↽"} else "right")
+            return
+        if symbol in {"⇋", "⇌"}:
+            top_offset = mid_y - pad // 2
+            bottom_offset = mid_y + pad // 2
+            old_mid = mid_y
+            mid_y = top_offset  # type: ignore[assignment]
+            draw_arrow("left" if symbol == "⇌" else "right")
+            mid_y = bottom_offset  # type: ignore[assignment]
+            draw_arrow("right" if symbol == "⇌" else "left")
+            mid_y = old_mid  # type: ignore[assignment]
+            return
+
+        if symbol in {"≅", "≃", "≈", "∼", "≁", "≇", "≉", "≍"}:
+            wave(mid_y - pad // 2, max(1, pad / 3))
+            if symbol != "∼":
+                wave(mid_y + pad // 2, max(1, pad / 3))
+            if symbol in {"≅", "≃"}:
+                line(left, bottom - pad // 3, right, bottom - pad // 3)
+            if symbol in {"≁", "≇", "≉"}:
+                slash()
+            return
+        if symbol in {"≺", "≼", "≰", "⪇", "≨", "⋦", "≦", "⪅", "≲", "⋖", "⋘", "≾", "≪"}:
+            if symbol in {"⋘", "≪"}:
+                draw_less(-width * 0.18)
+                draw_less(width * 0.18)
+            else:
+                draw_less()
+            if symbol in {"≼", "≦", "⪅", "≾"}:
+                line(left, bottom - pad // 3, right, bottom - pad // 3)
+            if symbol in {"≲", "⋦"}:
+                wave(bottom - pad // 2, max(1, pad / 3))
+            if symbol in {"≰", "⪇", "≨"}:
+                slash()
+            return
+        if symbol in {"≻", "≽", "≱", "⪈", "≩", "⋧", "≧", "⪆", "≳", "⋗", "⋙", "≿", "≫"}:
+            if symbol in {"⋙", "≫"}:
+                draw_less(-width * 0.18, greater=True)
+                draw_less(width * 0.18, greater=True)
+            else:
+                draw_less(greater=True)
+            if symbol in {"≽", "≧", "⪆", "≿"}:
+                line(left, bottom - pad // 3, right, bottom - pad // 3)
+            if symbol in {"≳", "⋧"}:
+                wave(bottom - pad // 2, max(1, pad / 3))
+            if symbol in {"≱", "⪈", "≩"}:
+                slash()
+            return
+        if symbol in {"≶", "≷"}:
+            draw_less(greater=symbol == "≷")
+            draw_less(greater=symbol == "≶")
+            return
+        if symbol in {"≐", "≔", "≕", "≜"}:
+            line(left, mid_y - pad // 2, right, mid_y - pad // 2)
+            line(left, mid_y + pad // 3, right, mid_y + pad // 3)
+            if symbol == "≐":
+                dot(mid_x, top + pad // 2)
+            elif symbol == "≔":
+                dot(left - pad // 3, mid_y - pad // 2)
+                dot(left - pad // 3, mid_y + pad // 3)
+            elif symbol == "≕":
+                dot(right + pad // 3, mid_y - pad // 2)
+                dot(right + pad // 3, mid_y + pad // 3)
+            else:
+                poly([(mid_x, top + pad // 3), (mid_x - pad // 2, top + pad), (mid_x + pad // 2, top + pad), (mid_x, top + pad // 3)])
+            return
+
+        if symbol in {"∂"}:
+            ellipse(mid_x, mid_y + pad // 4, width * 0.28, height * 0.28)
+            line(mid_x + width * 0.18, top + pad // 3, mid_x - width * 0.1, bottom - pad)
+            return
+        if symbol in {"∇"}:
+            poly([(left, top + pad), (right, top + pad), (mid_x, bottom - pad), (left, top + pad)])
+            return
+        if symbol in {"∀"}:
+            poly([(left, top + pad), (mid_x, bottom - pad), (right, top + pad)])
+            line(left + width * 0.26, mid_y, right - width * 0.26, mid_y)
+            return
+        if symbol in {"∃", "∄"}:
+            line(left, top + pad, right, top + pad)
+            line(right, top + pad, right, bottom - pad)
+            line(left, mid_y, right, mid_y)
+            line(left, bottom - pad, right, bottom - pad)
+            if symbol == "∄":
+                slash()
+            return
+        if symbol in {"∅"}:
+            ellipse(mid_x, mid_y, width * 0.32, height * 0.35)
+            slash()
+            return
+        if symbol in {"∉", "∈", "∋"}:
+            if symbol == "∋":
+                ellipse(left + width * 0.42, mid_y, width * 0.3, height * 0.33, -math.pi / 2, math.pi / 2)
+            else:
+                ellipse(right - width * 0.42, mid_y, width * 0.3, height * 0.33, math.pi / 2, math.pi * 1.5)
+            line(left + pad, mid_y, right - pad, mid_y)
+            if symbol == "∉":
+                slash()
+            return
+        if symbol in {"∖", "⟍"}:
+            line(left, top, right, bottom)
+            return
+        if symbol == "⟋":
+            line(left, bottom, right, top)
+            return
+        if symbol == "∤":
+            line(mid_x, top, mid_x, bottom)
+            slash()
+            return
+
+        if symbol in {"⊂", "⊆", "⊊", "⫋", "⊈", "⋐"}:
+            draw_subset(with_line=symbol in {"⊆", "⊊", "⫋", "⊈", "⋐"}, slash_mark=symbol == "⊈")
+            return
+        if symbol in {"⊃", "⊇", "⊋", "⫌", "⊉", "⋑"}:
+            draw_subset(superset=True, with_line=symbol in {"⊇", "⊋", "⫌", "⊉", "⋑"}, slash_mark=symbol == "⊉")
+            return
+        if symbol in {"⊏", "⊑"}:
+            draw_subset(squared=True, with_line=symbol == "⊑")
+            return
+        if symbol in {"⊐", "⊒"}:
+            draw_subset(superset=True, squared=True, with_line=symbol == "⊒")
+            return
+
+        if symbol in {"⌈", "⌊", "⌜", "⌞"}:
+            line(right, top, left, top)
+            line(left, top, left, bottom)
+            if symbol in {"⌊", "⌞"}:
+                line(left, bottom, right, bottom)
+            return
+        if symbol in {"⌉", "⌋", "⌝", "⌟"}:
+            line(left, top, right, top)
+            line(right, top, right, bottom)
+            if symbol in {"⌋", "⌟"}:
+                line(right, bottom, left, bottom)
+            return
+
+        if symbol in {"⊕", "⊗", "⊛", "⊚", "⊝", "⨁", "⨂"}:
+            ellipse(mid_x, mid_y, width * 0.34, height * 0.34)
+            if symbol in {"⊕", "⨁"}:
+                line(mid_x, top + pad, mid_x, bottom - pad)
+                line(left + pad, mid_y, right - pad, mid_y)
+            elif symbol in {"⊗", "⨂"}:
+                line(left + pad, top + pad, right - pad, bottom - pad)
+                line(left + pad, bottom - pad, right - pad, top + pad)
+            elif symbol == "⊛":
+                line(mid_x, top + pad, mid_x, bottom - pad)
+                line(left + pad, mid_y, right - pad, mid_y)
+                line(left + pad, top + pad, right - pad, bottom - pad)
+                line(left + pad, bottom - pad, right - pad, top + pad)
+            elif symbol == "⊚":
+                ellipse(mid_x, mid_y, width * 0.15, height * 0.15)
+            else:
+                line(left + pad, mid_y, right - pad, mid_y)
+            return
+        if symbol in {"⊠", "⊞", "⊟", "⊡"}:
+            poly([(left, top), (right, top), (right, bottom), (left, bottom), (left, top)])
+            if symbol == "⊠":
+                line(left, top, right, bottom)
+                line(left, bottom, right, top)
+            elif symbol == "⊞":
+                line(mid_x, top, mid_x, bottom)
+                line(left, mid_y, right, mid_y)
+            elif symbol == "⊟":
+                line(left, mid_y, right, mid_y)
+            else:
+                dot(mid_x, mid_y)
+            return
+
+        if symbol in {"∬", "∭", "∯", "∰"}:
+            count = 3 if symbol in {"∭", "∰"} else 2
+            spacing = width / (count + 1)
+            for i in range(count):
+                cx = left + spacing * (i + 1)
+                poly([(cx + pad * 0.3, top), (cx - pad * 0.3, mid_y - pad), (cx + pad * 0.3, mid_y + pad), (cx - pad * 0.3, bottom)])
+            if symbol in {"∯", "∰"}:
+                ellipse(mid_x, mid_y, width * 0.28, height * 0.22)
+            return
+        if symbol in {"∐", "⨆"}:
+            line(left, top, right, top)
+            line(left + pad, top, left + pad, bottom)
+            line(right - pad, top, right - pad, bottom)
+            if symbol == "⨆":
+                line(left, bottom, right, bottom)
+            return
+        if symbol in {"⋃", "⊔"}:
+            ellipse(mid_x, top + height * 0.2, width * 0.32, height * 0.45, 0, math.pi)
+            return
+        if symbol in {"⋂", "⊓"}:
+            ellipse(mid_x, bottom - height * 0.2, width * 0.32, height * 0.45, math.pi, math.tau)
+            return
+        if symbol in {"⋁", "⋎"}:
+            poly([(left, top + pad), (mid_x, bottom - pad), (right, top + pad)])
+            return
+        if symbol in {"⋀", "⋏"}:
+            poly([(left, bottom - pad), (mid_x, top + pad), (right, bottom - pad)])
+            return
+
+        if symbol in {"⊢", "⊣", "⊨", "⊩", "⊫", "⊪", "⊬", "⊭", "⊮", "⊯", "⊤"}:
+            verticals = 2 if symbol in {"⊨", "⊫", "⊭", "⊯"} else 1
+            for i in range(verticals):
+                vx = mid_x - (stroke * 2 if verticals == 2 and i == 0 else 0) + (stroke * 2 if verticals == 2 and i == 1 else 0)
+                line(vx, top, vx, bottom)
+            if symbol in {"⊣"}:
+                line(left, mid_y, mid_x, mid_y)
+            else:
+                line(mid_x, mid_y, right, mid_y)
+            if symbol in {"⊩", "⊫", "⊪"}:
+                line(mid_x, mid_y - pad // 2, right, mid_y - pad // 2)
+            if symbol in {"⊤"}:
+                line(left, top, right, top)
+            if symbol in {"⊬", "⊭", "⊮", "⊯"}:
+                slash()
+            return
+        if symbol in {"∦"}:
+            line(mid_x - pad // 2, top, mid_x - pad // 2, bottom)
+            line(mid_x + pad // 2, top, mid_x + pad // 2, bottom)
+            slash()
+            return
+        if symbol in {"⌣"}:
+            ellipse(mid_x, top + height * 0.16, width * 0.35, height * 0.38, 0, math.pi)
+            return
+        if symbol in {"⌢"}:
+            ellipse(mid_x, bottom - height * 0.16, width * 0.35, height * 0.38, math.pi, math.tau)
+            return
+        if symbol in {"⋈"}:
+            poly([(left, top + pad), (mid_x, mid_y), (left, bottom - pad)])
+            poly([(right, top + pad), (mid_x, mid_y), (right, bottom - pad)])
+            return
+        if symbol in {"⊵", "⊴"}:
+            if symbol == "⊵":
+                poly([(left, top + pad), (right, mid_y), (left, bottom - pad), (left, top + pad)])
+            else:
+                poly([(right, top + pad), (left, mid_y), (right, bottom - pad), (right, top + pad)])
+            line(left, bottom, right, bottom)
+            return
+        if symbol in {"⋉", "⋊", "⋋", "⋌"}:
+            if symbol in {"⋉", "⋋"}:
+                poly([(right, top + pad), (left, mid_y), (right, bottom - pad)])
+                line(right, top + pad, right, bottom - pad)
+            else:
+                poly([(left, top + pad), (right, mid_y), (left, bottom - pad)])
+                line(left, top + pad, left, bottom - pad)
+            return
+        if symbol in {"∘", "⊚"}:
+            ellipse(mid_x, mid_y, width * 0.22, height * 0.22)
+            return
+        if symbol in {"⋆"}:
+            for angle in (0, math.tau / 5, math.tau * 2 / 5, math.tau * 3 / 5, math.tau * 4 / 5):
+                line(mid_x, mid_y, mid_x + math.cos(angle) * width * 0.32, mid_y + math.sin(angle) * height * 0.32)
+            return
+        if symbol in {"⋄"}:
+            poly([(mid_x, top), (right, mid_y), (mid_x, bottom), (left, mid_y), (mid_x, top)])
+            return
+        if symbol in {"∁"}:
+            ellipse(mid_x + pad // 3, mid_y, width * 0.32, height * 0.36, math.pi * 0.35, math.pi * 1.65)
+            return
+
+        self._draw_synthetic_text(ctx, self.font, x, y)
 
 
 class HBox(Box):

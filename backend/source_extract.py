@@ -164,15 +164,19 @@ def extract_source_to_markdown(path: Path) -> dict[str, Any]:
             result = extract_pdf_to_markdown(path)
             result["markdown"] = normalize_math_markdown(repair_extracted_markdown_text(result["markdown"]))
             return result
-        except (MinerUConfigError, MinerUExtractionError) as e:
+        except (MinerUConfigError, MinerUExtractionError, OSError) as e:
             text_layer = _read_pdf_text_layer(path)
             if not text_layer.strip():
                 raise
+            if isinstance(e, (MinerUConfigError, MinerUExtractionError)):
+                mineru_warning = user_facing_mineru_error(e)
+            else:
+                mineru_warning = f"MinerU/OCR 服务连接失败：{e}"
             return {
                 "markdown": normalize_math_markdown(repair_extracted_markdown_text(text_layer)),
                 "source": "pymupdf_pdf_fallback",
                 "warnings": [
-                    user_facing_mineru_error(e),
+                    mineru_warning,
                     "已改用 PDF 文本层提取；扫描件或图片公式仍建议配置 MinerU/OCR",
                 ],
                 "metadata": {"fallback": "pdf_text_layer"},
