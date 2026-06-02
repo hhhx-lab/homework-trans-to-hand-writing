@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import io
+import base64
 import os
+import random
 import re
 import sys
 import tempfile
@@ -20,8 +22,12 @@ import mineru_adapter
 from handwriting_markdown_renderer import (
     FontCache,
     HandwritingRenderConfig,
+    MathTextBox,
     ScriptBox,
     TextBox,
+    DrawContext,
+    _blocks,
+    _display_math_lines,
     _layout_inline,
     _text_to_boxes,
     latex_to_debug_text,
@@ -34,9 +40,11 @@ from markdown_math import editable_docx_bytes, inspect_docx_math, normalize_math
 from mineru_adapter import (
     MinerUConfigError,
     MinerUExtractionError,
+    _collect_markdown,
     extract_pdf_to_markdown,
     sanitize_mineru_markdown,
     user_facing_mineru_error,
+    validate_mineru_environment,
 )
 from source_extract import extract_source_to_markdown, repair_extracted_markdown_text, safe_source_filename
 
@@ -484,6 +492,19 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("a", "b", "c+d"):
             self.assertIn(token, debug_text)
 
+    def test_outer_array_does_not_split_nested_array_cells(self):
+        debug_text = latex_to_debug_text(
+            r"\begin{array}{l}"
+            r"\Sigma=\left[\begin{array}{c c}1&2\end{array}\right]"
+            r"\frac{1}{8}\left[\begin{array}{c c}9&-1\\-1&1\end{array}\right]"
+            r"\left[\begin{array}{c}1\\2\end{array}\right]=\frac{9}{8}."
+            r"\\ \end{array}",
+            FONT_PATH,
+        )
+        self.assertNotRegex(debug_text, r"\\|begin|end|array|&|arraycc")
+        for token in ("Σ=", "1", "2", "(1)/(8)", "9", "-1", "(9)/(8)"):
+            self.assertIn(token, debug_text)
+
     def test_plain_tex_matrix_commands_render_as_structured_matrices(self):
         expr = (
             r"\matrix{a&b\\c&d}+"
@@ -640,6 +661,26 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("¨u", debug_text)
         self.assertIn("x^π", debug_text)
 
+    def test_tilde_decoration_does_not_get_parsed_as_scripted_group(self):
+        debug_text = latex_to_debug_text(r"\widetilde{X}+\tilde{\pi}+\~n", FONT_PATH)
+        self.assertNotIn("\\", debug_text)
+        self.assertNotIn("~(", debug_text)
+        self.assertIn("~X", debug_text)
+        self.assertIn("~π", debug_text)
+        self.assertIn("~n", debug_text)
+
+    def test_latex_nonbreaking_tilde_spaces_do_not_render_as_wave_glyphs(self):
+        debug_text = latex_to_debug_text(
+            r"H_{0} {:} \mu {=} 6 \mathrm {~} \mathrm {~} \mathrm {~}+x\sim y+\tilde{x}+\~n",
+            FONT_PATH,
+        )
+
+        self.assertNotIn("~~~", debug_text)
+        self.assertNotIn("6~", debug_text)
+        self.assertIn("x∼y", debug_text)
+        self.assertIn("~x", debug_text)
+        self.assertIn("~n", debug_text)
+
     def test_common_latex_commands_render_readably_without_raw_latex(self):
         expr = (
             r"\dfrac{a_1}{b^2}+\binom{n}{k}+\overset{a}{b}+"
@@ -707,29 +748,23 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn(r"\sum", result["text"])
         self.assertIn("完成", result["text"])
 
-    def test_pdf_fallback_text_is_normalized_before_handwriting_render(self):
-        import fitz
-
+    def test_mineru_pdf_text_is_normalized_before_handwriting_render(self):
         from app import extract_textfileprocess_content
 
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "formula.pdf"
-            doc = fitz.open()
-            page = doc.new_page(width=595, height=842)
-            page.insert_text(
-                (72, 96),
-                r"PDF题1 中文ABC123 a\times b \sin x a\degree b A\setminus B \frac{a_1}{b^2}",
-                fontsize=12,
-                fontname="handfont",
-                fontfile=str(FONT_PATH),
-            )
-            doc.save(pdf)
-            doc.close()
-
-            with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+            pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            with mock.patch(
+                "source_extract.extract_pdf_to_markdown",
+                return_value={
+                    "markdown": r"PDF题1 中文ABC123 a\times b \sin x a\degree b A\setminus B \frac{a_1}{b^2}",
+                    "source": "mineru",
+                    "warnings": [],
+                },
+            ):
                 result = extract_textfileprocess_content(pdf)
 
-        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
+        self.assertEqual(result["source"], "mineru")
         compact_text = re.sub(r"\s+", "", result["text"])
         self.assertIn("PDF题1", compact_text)
         self.assertIn("中文ABC123", compact_text)
@@ -747,9 +782,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             forbidden_pattern=r"\\|degree|setminus|times|frac",
         )
 
-    def test_multipage_pdf_fallback_preserves_page_tokens_through_render_debug(self):
-        import fitz
-
+    def test_multipage_mineru_pdf_preserves_page_tokens_through_render_debug(self):
         from app import extract_textfileprocess_content
 
         pages = [
@@ -771,23 +804,17 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "multipage_formula.pdf"
-            doc = fitz.open()
-            for page_data in pages:
-                page = doc.new_page(width=595, height=842)
-                page.insert_text(
-                    (72, 96),
-                    page_data["raw"],
-                    fontsize=12,
-                    fontname="handfont",
-                    fontfile=str(FONT_PATH),
-                )
-            doc.save(pdf)
-            doc.close()
-
-            with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+            pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            mineru_markdown = "\n\n".join(
+                f"## 第{index}页\n\n{page_data['raw']}" for index, page_data in enumerate(pages, start=1)
+            )
+            with mock.patch(
+                "source_extract.extract_pdf_to_markdown",
+                return_value={"markdown": mineru_markdown, "source": "mineru", "warnings": []},
+            ):
                 result = extract_textfileprocess_content(pdf)
 
-        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
+        self.assertEqual(result["source"], "mineru")
         self.assertIn("$", result["text"])
         for raw in (
             r"\degree",
@@ -810,41 +837,13 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
                 debug_tokens=page_data["debug_tokens"],
             )
 
-    def test_source_extract_pdf_uses_text_layer_when_mineru_unavailable(self):
-        import fitz
-
+    def test_source_extract_pdf_requires_mineru_when_unavailable(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "source_text_layer.pdf"
-            doc = fitz.open()
-            page = doc.new_page(width=595, height=842)
-            page.insert_text(
-                (72, 96),
-                r"前端PDF 中文ABC123 +-*/=<> a\times b \sin x A\setminus B \frac{a_1}{b^2}",
-                fontsize=12,
-                fontname="handfont",
-                fontfile=str(FONT_PATH),
-            )
-            doc.save(pdf)
-            doc.close()
-
+            pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
             with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
-                result = extract_source_to_markdown(pdf)
-
-        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
-        self.assertEqual(result["metadata"]["fallback"], "pdf_text_layer")
-        self.assertTrue(any("MinerU 尚未配置" in warning for warning in result["warnings"]))
-        self.assertTrue(any("PDF 文本层提取" in warning for warning in result["warnings"]))
-        markdown = result["markdown"]
-        self.assertIn("$", markdown)
-        self.assertNotIn(r"\setminus", markdown)
-        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
-        assert_semantic_tokens_preserved(
-            self,
-            debug_text,
-            text_tokens=("前端PDF", "中文ABC123", "+-*/=<>"),
-            debug_tokens=("a×b", "sinx", "A∖B", "(a_1)/(b^2)"),
-            forbidden_pattern=r"\\|setminus|times|frac",
-        )
+                with self.assertRaises(MinerUConfigError):
+                    extract_source_to_markdown(pdf)
 
     def test_raw_latex_commands_in_text_are_rendered_as_math(self):
         debug_text = markdown_render_debug_text(
@@ -1189,6 +1188,48 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             self.assertLessEqual(ink_bbox[2], background.width - right_margin)
             self.assertLessEqual(ink_bbox[3], background.height - bottom_margin)
 
+    def test_pdf_page_markers_preserve_extracted_lines_and_force_page_breaks(self):
+        markdown = "## 第1页\n\n第一行\n第二行 x ≥ c\n\n## 第2页\n\n第三行 p n ≤ 0.01"
+        blocks = _blocks(markdown)
+        self.assertEqual(
+            blocks,
+            [
+                ("page_break", "## 第1页"),
+                ("text", "第一行"),
+                ("text", "第二行 x ≥ c"),
+                ("page_break", "## 第2页"),
+                ("text", "第三行 p n ≤ 0.01"),
+            ],
+        )
+
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertIn("第一行\n第二行 x ≥ c", debug_text)
+        self.assertNotIn("第一行 第二行", debug_text)
+        self.assertNotIn("第1页", debug_text)
+        self.assertNotIn("第2页", debug_text)
+
+        background = Image.new("RGB", (720, 540), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 42)
+        config = HandwritingRenderConfig(
+            line_spacing=72,
+            font_size=42,
+            left_margin=48,
+            top_margin=32,
+            right_margin=48,
+            bottom_margin=32,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+        )
+        bounds: list[tuple[int, int, int, int, int, str]] = []
+        pages = render_markdown_handwriting(markdown, background, font, config, draw_bounds_sink=bounds)
+
+        self.assertEqual(len(pages), 2)
+        self.assertEqual([item[0] for item in bounds], [1, 1, 2])
+        self.assertEqual([item[-1] for item in bounds], ["第一行", "第二行 x ≥ c", "第三行 p n ≤ 0.01"])
+
     def test_plain_text_lines_use_one_ruled_line_even_with_large_font(self):
         background = Image.new("RGB", (520, 360), "white")
         top_margin = 40
@@ -1310,6 +1351,80 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(ink_bbox[0], config.left_margin)
         self.assertLessEqual(ink_bbox[2], background.width - config.right_margin)
 
+    def test_bmatrix_left_and_right_brackets_face_the_matrix_body(self):
+        self._assert_square_brackets_face_body(r"\begin{bmatrix}X_1\\X_3\end{bmatrix}")
+
+    def test_left_right_array_square_brackets_face_the_matrix_body(self):
+        self._assert_square_brackets_face_body(r"\left[\begin{array}{c}X_1\\X_3\end{array}\right]")
+
+    def _assert_square_brackets_face_body(self, expr: str):
+        font = ImageFont.truetype(str(FONT_PATH), 72)
+        fonts = FontCache(font)
+        config = HandwritingRenderConfig(
+            line_spacing=110,
+            font_size=72,
+            left_margin=40,
+            top_margin=40,
+            right_margin=40,
+            bottom_margin=40,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+            seed=1,
+        )
+        box = latex_to_box(expr, fonts, 72)
+        page = Image.new("RGB", (box.width + 120, box.height + 120), "white")
+        draw = ImageDraw.Draw(page)
+        ctx = DrawContext(page, draw, fonts, config, random.Random(1))
+        box.draw(ctx, 60, 60)
+        bbox = ImageChops.difference(Image.new("RGB", page.size, "white"), page).getbbox()
+        self.assertIsNotNone(bbox)
+        x0, y0, x1, y1 = bbox
+        width = x1 - x0
+        left_zone = page.crop((x0, y0, x0 + max(8, width // 6), y1)).convert("L")
+        right_zone = page.crop((x1 - max(8, width // 6), y0, x1, y1)).convert("L")
+
+        def column_ink(zone: Image.Image) -> list[int]:
+            w, h = zone.size
+            return [sum(255 - zone.getpixel((x, y)) for y in range(h)) for x in range(w)]
+
+        left_columns = column_ink(left_zone)
+        right_columns = column_ink(right_zone)
+        self.assertLess(left_columns.index(max(left_columns)), len(left_columns) // 2)
+        self.assertGreater(right_columns.index(max(right_columns)), len(right_columns) // 2)
+
+        def row_ink(zone: Image.Image) -> list[int]:
+            w, h = zone.size
+            return [sum(255 - zone.getpixel((x, y)) for x in range(w)) for y in range(h)]
+
+        def ink_extent(rows: list[int]) -> tuple[int, int]:
+            threshold = max(1, max(rows) * 0.04)
+            indices = [index for index, value in enumerate(rows) if value >= threshold]
+            self.assertTrue(indices)
+            return indices[0], indices[-1]
+
+        left_top, left_bottom = ink_extent(row_ink(left_zone))
+        right_top, right_bottom = ink_extent(row_ink(right_zone))
+        vertical_slack = max(10, (y1 - y0) // 8)
+        self.assertLessEqual(left_top, vertical_slack)
+        self.assertLessEqual(right_top, vertical_slack)
+        self.assertGreaterEqual(left_bottom, (y1 - y0) - vertical_slack)
+        self.assertGreaterEqual(right_bottom, (y1 - y0) - vertical_slack)
+
+    def test_wide_display_equalities_group_terms_instead_of_fragmenting_each_piece(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        fonts = FontCache(font)
+        expr = r"Var(W)=Var(X_1)+Var(X_3)+2cov(X_1,X_3)=1+9+2=12"
+        lines = _display_math_lines(expr, available_width=560, fonts=fonts, size=52)
+        compact_lines = [re.sub(r"\s+", "", line) for line in lines]
+
+        self.assertLessEqual(len(lines), 2)
+        self.assertIn("Var(W)=", compact_lines[0])
+        self.assertTrue(any("1+9+2=12" in line for line in compact_lines))
+        self.assertFalse(any(line in {"Var(W)=", "1+9+2=", "12"} for line in compact_lines))
+
     def test_tall_display_formula_stays_above_bottom_margin(self):
         background = Image.new("RGB", (500, 320), "white")
         font = ImageFont.truetype(str(FONT_PATH), 72)
@@ -1412,6 +1527,224 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertEqual(first.sub.debug_text(), "i=1")
         self.assertEqual(first.sup.debug_text(), "n")
 
+    def test_script_box_reserves_gap_between_base_and_side_scripts(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        box = latex_to_box(r"x_i^2", FontCache(font), 52)
+        first = box.children[0]
+        self.assertIsInstance(first, ScriptBox)
+        self.assertIsNotNone(first.sub)
+        self.assertIsNotNone(first.sup)
+        expected_gap = max(2, 52 // 12)
+        self.assertGreaterEqual(
+            first.width,
+            first.base.width + max(first.sub.width, first.sup.width) + expected_gap,
+        )
+
+    def test_side_subscript_stays_visually_attached_to_base(self):
+        font = ImageFont.truetype(str(FONT_PATH), 52)
+        box = latex_to_box(r"x_i", FontCache(font), 52)
+        first = box.children[0]
+        self.assertIsInstance(first, ScriptBox)
+        self.assertIsNotNone(first.sub)
+        self.assertLessEqual(first.height, first.base.height + first.sub.height)
+
+    def test_explicit_side_scripts_are_visibly_offset_for_handwriting(self):
+        font = ImageFont.truetype(str(FONT_PATH), 56)
+        box = latex_to_box(r"P_2^c+20^n", FontCache(font), 56)
+        scripts = [child for child in box.children if isinstance(child, ScriptBox)]
+
+        self.assertEqual(len(scripts), 2)
+        for script in scripts:
+            with self.subTest(script=script.debug_text()):
+                min_sup_shift = max(4, script.base.height // 4)
+                max_sup_shift = max(6, script.base.height // 2)
+                max_sub_shift = max(6, script.base.height // 3)
+                if script.sup:
+                    self.assertGreaterEqual(script.sup_shift, min_sup_shift)
+                    self.assertLessEqual(script.sup_shift, max_sup_shift)
+                if script.sub:
+                    self.assertLessEqual(script.sub_shift, max_sub_shift)
+
+    def test_math_punctuation_uses_stable_handwritten_glyphs_for_all_fonts(self):
+        def leaves(box):
+            children = getattr(box, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield box
+
+        size = 56
+        font_dir = Path(__file__).resolve().parents[1] / "font_assets"
+        for font_path in font_dir.glob("*.ttf"):
+            with self.subTest(font=font_path.name):
+                font = ImageFont.truetype(str(font_path), size)
+                box = latex_to_box(r"0.00365+(1-p)", FontCache(font), size)
+                glyphs = [leaf for leaf in leaves(box) if leaf.debug_text() in {".", ",", "(", ")"}]
+                self.assertGreaterEqual(len(glyphs), 3)
+                for glyph in glyphs:
+                    self.assertEqual(type(glyph).__name__, "MathTextBox")
+                dot = next(leaf for leaf in glyphs if leaf.debug_text() == ".")
+                self.assertLessEqual(dot.width, int(size * 0.28))
+                self.assertGreaterEqual(dot.baseline, int(size * 0.76))
+
+    def test_math_ascii_letters_do_not_become_superscripts_without_explicit_marker(self):
+        def leaves(box):
+            children = getattr(box, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield box
+
+        font = ImageFont.truetype(str(FONT_PATH), 56)
+        box = latex_to_box(r"\Phi(C)+P_b(|\overline{X}-6|\ge c)=0.05", FontCache(font), 56)
+        script_boxes = [leaf for leaf in leaves(box) if isinstance(leaf, ScriptBox)]
+        self.assertTrue(script_boxes)
+        explicit_script_texts = {script.debug_text() for script in script_boxes}
+        self.assertIn("P_b", explicit_script_texts)
+        self.assertNotIn("C", explicit_script_texts)
+        self.assertNotIn("c", explicit_script_texts)
+
+    def test_decimal_dots_stay_on_baseline_in_rendered_pdf_formula_samples(self):
+        markdown = "显著性水平为 $0.03351$，且 $P_b(|\\overline{X}-6|\\ge c)=0.05$。"
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+        self.assertIn("0.03351", debug_text)
+        self.assertIn("0.05", debug_text)
+        self.assertNotIn("0 03351", debug_text)
+        self.assertNotIn("0 05", debug_text)
+
+    def test_math_decimal_dot_uses_low_baseline_stable_glyph(self):
+        font = ImageFont.truetype(str(FONT_PATH), 56)
+        box = latex_to_box("0.05", FontCache(font), 56)
+
+        def leaves(node):
+            children = getattr(node, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield node
+
+        dot = next(leaf for leaf in leaves(box) if isinstance(leaf, MathTextBox) and leaf.debug_text() == ".")
+        self.assertGreaterEqual(dot.baseline, int(56 * 0.9))
+
+    def test_plain_text_decimal_dot_is_promoted_to_stable_math_glyph(self):
+        font = ImageFont.truetype(str(FONT_PATH), 56)
+        boxes = _text_to_boxes("0.05 与 3.92", FontCache(font), 56)
+
+        def leaves(node):
+            children = getattr(node, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield node
+
+        dots = [leaf for box in boxes for leaf in leaves(box) if leaf.debug_text() == "."]
+        self.assertGreaterEqual(len(dots), 2)
+        self.assertTrue(all(isinstance(dot, MathTextBox) for dot in dots))
+        self.assertTrue(all(dot.baseline >= int(56 * 0.9) for dot in dots))
+
+    def test_plain_text_math_punctuation_and_c_use_stable_glyphs_for_qingye_font(self):
+        font_path = Path(__file__).resolve().parents[1] / "font_assets" / "青叶手写体.ttf"
+        font = ImageFont.truetype(str(font_path), 56)
+        boxes = _text_to_boxes("若总体服从 U (0,θ)，端点 c =0 和 c =1 时", FontCache(font), 56)
+
+        def leaves(node):
+            children = getattr(node, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield node
+
+        leaves_by_text = {}
+        for box in boxes:
+            for leaf in leaves(box):
+                leaves_by_text.setdefault(leaf.debug_text(), []).append(leaf)
+
+        for token in ("(", ")", "0", ",", "c"):
+            self.assertIn(token, leaves_by_text)
+            self.assertTrue(
+                all(isinstance(leaf, MathTextBox) for leaf in leaves_by_text[token]),
+                f"{token} should use stable math rendering in plain math-like text",
+            )
+        c_box = leaves_by_text["c"][0]
+        zero_box = leaves_by_text["0"][0]
+        self.assertGreaterEqual(c_box.baseline, int(zero_box.baseline * 0.82))
+
+    def test_plain_text_math_letters_and_inequalities_use_math_fallback_for_yunyan_font(self):
+        font_path = Path(__file__).resolve().parents[1] / "font_assets" / "云烟体.ttf"
+        font = ImageFont.truetype(str(font_path), 56)
+        boxes = _text_to_boxes("z p n ≤ ≥ 0.01", FontCache(font), 56)
+
+        def leaves(node):
+            children = getattr(node, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield node
+
+        leaves_by_text = {}
+        for box in boxes:
+            for leaf in leaves(box):
+                leaves_by_text.setdefault(leaf.debug_text(), []).append(leaf)
+
+        zero_box = leaves_by_text["0"][0]
+        for token in ("p", "n", "≤", "≥"):
+            self.assertIn(token, leaves_by_text)
+            for leaf in leaves_by_text[token]:
+                self.assertIsInstance(leaf, MathTextBox)
+                resolved_name = Path(getattr(leaf.font, "path", "")).name
+                self.assertNotEqual(resolved_name, "云烟体.ttf")
+                self.assertGreaterEqual(leaf.baseline, int(zero_box.baseline * 0.75))
+
+    def test_math_lowercase_c_stays_near_formula_baseline(self):
+        font = ImageFont.truetype(str(FONT_PATH), 72)
+        box = latex_to_box(r"| \overline{X} - 6 | \ge c", FontCache(font), 72)
+
+        def leaves(node):
+            children = getattr(node, "children", None)
+            if children:
+                for child in children:
+                    yield from leaves(child)
+            else:
+                yield node
+
+        c_box = next(leaf for leaf in leaves(box) if leaf.debug_text() == "c")
+        ge_box = next(leaf for leaf in leaves(box) if leaf.debug_text() == "≥")
+        self.assertGreaterEqual(c_box.baseline, int(ge_box.baseline * 0.75))
+        self.assertLessEqual(c_box.height, ge_box.height)
+
+    def test_math_punctuation_and_scripts_ignore_random_jitter(self):
+        background = Image.new("RGB", (640, 320), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 56)
+
+        def render(seed: int) -> Image.Image:
+            config = HandwritingRenderConfig(
+                line_spacing=86,
+                font_size=56,
+                left_margin=64,
+                top_margin=52,
+                right_margin=64,
+                bottom_margin=52,
+                word_spacing=1,
+                font_size_sigma=9,
+                perturb_x_sigma=10,
+                perturb_y_sigma=10,
+                perturb_theta_sigma=0.3,
+                ink_depth_sigma=0,
+                seed=seed,
+            )
+            return render_markdown_handwriting(r"$0.125+(x_i)^2-(1-p)$", background, font, config)[0]
+
+        first = ImageChops.difference(background, render(11))
+        second = ImageChops.difference(background, render(97))
+        self.assertEqual(first.getbbox(), second.getbbox())
+        self.assertEqual(first.tobytes(), second.tobytes())
+
     def test_contour_integral_commands_render_as_big_operator_symbols(self):
         markdown = r"题目 \oint_C f(z)\,dz+\oiint_S g\,dS+\oiiint_V h\,dV。"
         normalized = normalize_math_markdown(markdown)
@@ -1424,8 +1757,116 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
     def test_mineru_sanitize_preserves_image_placeholders(self):
         sanitized = sanitize_mineru_markdown("题面\n\n![scan](images/p1.png)\n\n答案")
         self.assertIn("题面", sanitized)
-        self.assertIn("[图片:![scan](images/p1.png)]", sanitized)
+        self.assertIn("![scan](images/p1.png)", sanitized)
+        self.assertNotIn("[图片:", sanitized)
         self.assertIn("答案", sanitized)
+
+    def test_mineru_sanitize_converts_html_tables_to_plain_rows(self):
+        sanitized = sanitize_mineru_markdown(
+            "表格前\n\n"
+            "<table><tr><th>&lambda;</th><th>&beta;(&lambda;)</th></tr>"
+            "<tr><td>0.05</td><td>0.000926</td></tr>"
+            "<tr><td>0.10</td><td>0.00235</td></tr></table>\n\n"
+            "表格后"
+        )
+        blocks = _blocks(sanitized)
+        debug_text = markdown_render_debug_text(sanitized, FONT_PATH)
+
+        self.assertIn("表格前", sanitized)
+        self.assertIn("λ", sanitized)
+        self.assertIn("β(λ)", sanitized)
+        self.assertIn("0.000926", sanitized)
+        self.assertIn("表格后", sanitized)
+        self.assertNotRegex(sanitized, r"</?(?:table|tr|td|th)\b")
+        self.assertNotIn("<table", debug_text)
+        self.assertEqual(
+            [block for block in blocks if block[0] == "text"],
+            [
+                ("text", "表格前"),
+                ("text", "λ     β(λ)"),
+                ("text", "0.05  0.000926"),
+                ("text", "0.10  0.00235"),
+                ("text", "表格后"),
+            ],
+        )
+
+    def test_mineru_collect_markdown_inlines_local_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            image_dir = tmp_dir / "images"
+            image_dir.mkdir()
+            image = Image.new("RGB", (48, 28), "white")
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((4, 4, 44, 24), outline="black", width=2)
+            image.save(image_dir / "table.png")
+            (tmp_dir / "full.md").write_text("题面\n\n![table](images/table.png)\n\n答案", encoding="utf-8")
+
+            collected = _collect_markdown(tmp_dir)
+
+        self.assertIn("题面", collected)
+        self.assertIn("答案", collected)
+        self.assertRegex(collected, r"!\[table\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)")
+        self.assertNotIn("[图片:", collected)
+
+    def test_markdown_image_block_does_not_overlap_surrounding_text(self):
+        image = Image.new("RGB", (180, 80), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((5, 5, 175, 75), outline="black", width=3)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        data_uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+        markdown = f"before table\n\n![table]({data_uri})\n\nafter table"
+
+        background = Image.new("RGB", (520, 520), "white")
+        font = ImageFont.truetype(str(FONT_PATH), 42)
+        config = HandwritingRenderConfig(
+            line_spacing=72,
+            font_size=42,
+            left_margin=48,
+            top_margin=40,
+            right_margin=48,
+            bottom_margin=40,
+            word_spacing=1,
+            perturb_x_sigma=0,
+            perturb_y_sigma=0,
+            perturb_theta_sigma=0,
+            ink_depth_sigma=0,
+        )
+        bounds: list[tuple[int, int, int, int, int, str]] = []
+        render_markdown_handwriting(markdown, background, font, config, draw_bounds_sink=bounds)
+
+        before = next(item for item in bounds if item[-1] == "before table")
+        image_bound = next(item for item in bounds if item[-1] == "[图片]")
+        after = next(item for item in bounds if item[-1] == "after table")
+        self.assertGreaterEqual(image_bound[2], before[4])
+        self.assertGreaterEqual(after[2], image_bound[4])
+
+    def test_mineru_pdf_table_image_block_is_preserved(self):
+        image = Image.new("RGB", (120, 64), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((4, 4, 116, 60), outline="black", width=2)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        data_uri = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "table.pdf"
+            pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            with mock.patch(
+                "source_extract.extract_pdf_to_markdown",
+                return_value={
+                    "markdown": f"before table\n\n![表格]({data_uri})\n\nafter table",
+                    "source": "mineru",
+                    "warnings": [],
+                },
+            ):
+                result = extract_source_to_markdown(pdf)
+
+        markdown = result["markdown"]
+        self.assertEqual(result["source"], "mineru")
+        self.assertIn("before table", markdown)
+        self.assertIn("after table", markdown)
+        self.assertIn("![表格]", markdown)
+        self.assertIn("data:image/png;base64,", markdown)
 
     def test_repair_extracted_markdown_restores_split_pingwen_terms(self):
         markdown = (
@@ -1476,11 +1917,103 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertIn("互通类为 $C$ 。", repaired)
         self.assertNotRegex(repaired, r"\\epsilon|\\overline|\\circ|\\mathfrak")
 
+    def test_repair_extracted_markdown_rewrites_ocr_c_scripts_as_parentheses(self):
+        markdown = (
+            r"第一类错误概率为 $a=P_2^c, \overline{X}\ge b^c "
+            r"=1-\Phi^c z^c\approx 0.00365$。"
+        )
+
+        repaired = repair_extracted_markdown_text(markdown)
+        debug_text = markdown_render_debug_text(repaired, FONT_PATH)
+
+        self.assertIn(r"P_2(", repaired)
+        self.assertIn("b)", repaired)
+        self.assertIn(r"\Phi(", repaired)
+        self.assertIn("z)", repaired)
+        self.assertNotRegex(repaired, r"\^\s*\{?\s*c\s*\}?|\\mathfrak\s*\{\s*c")
+        self.assertNotIn("^c", debug_text)
+
+    def test_pdf_repair_restores_statistics_formula_tokens_for_user_pdf(self):
+        sample_pdf = Path("/Users/hwaigc/workspace/统计习题7.1_1-3-4-7-8答案.pdf")
+        if not sample_pdf.exists():
+            self.skipTest("统计习题7.1_1-3-4-7-8答案.pdf sample is not available")
+
+        result = extract_source_to_markdown(sample_pdf)
+        markdown = result["markdown"]
+        debug_text = markdown_render_debug_text(markdown, FONT_PATH)
+
+        self.assertIn("0.03351", debug_text)
+        self.assertIn("0.05", debug_text)
+        self.assertIn("n = 20", debug_text)
+        self.assertNotRegex(debug_text, r"0 03351|0 05|~\(|\bc\^|\^c")
+
+    def test_statistics_pdf_repair_fixes_user_reported_beta_and_c_fragments(self):
+        markdown = (
+            "第 7 题 拒绝域为 W = {x : x ≥ c}. 0 ≤ c ≤ 1 当   时， α = P 0 (X ≥ c) = 1 − c. 同时， "
+            "$\\[\\beta=P_1(X$ 所以 α + 2β = 1 − c + 2c . 2\n"
+            "令导数为 0： −1 + 4c = 0. 解得 c = 4 . 1 此时 2 8 . 7 α + 2β = 1 − 4 + 1 2"
+        )
+
+        repaired = repair_extracted_markdown_text(markdown)
+        debug_text = markdown_render_debug_text(repaired, FONT_PATH)
+
+        self.assertIn("β = P_1(X < c) = c^2", repaired)
+        self.assertIn("α + 2β = 1 − c + 2c^2", repaired)
+        self.assertIn("c = 1/4", repaired)
+        self.assertIn("7/8", repaired)
+        self.assertNotIn("backslash", debug_text)
+        self.assertNotIn("^c", debug_text)
+
+    def test_mineru_repair_compacts_spaced_numbers_and_math_identifiers(self):
+        markdown = (
+            r"证明当 n→∞ 时， $\alpha 0 , β 0$"
+            "\n\n$$\n"
+            r"\alpha = 1 - \Phi (0. 6 \sqrt {2 0}) \approx 0. 0 0 3 6 5."
+            "\n$$\n\n$$\n"
+            r"n \geq \left(\frac {2 . 3 2 6 3}{0 . 4}\right)^{2} \approx 3 3. 8 2."
+            "\n$$\n\n$$\n"
+            r"X_{_{\left( n \right)} } {=} m a x { \left( X_{_1} , X_{_2} , X_{_n} \right) }"
+            "\n$$\n\n$$\n"
+            r"S = \sum_{i = 1}^{3 0} X_i,\quad S \sim P (3 0 \lambda),\quad "
+            r"1 - e^{- 3 0 \lambda} \sum_{k = 0}^{6} \frac {(3 0 \lambda)^k}{k !}."
+            "\n$$"
+        )
+
+        repaired = repair_extracted_markdown_text(markdown)
+
+        for token in (
+            "0.6",
+            "\\sqrt {20}",
+            "0.00365",
+            "2.3263",
+            "33.82",
+            "$\\alpha \\to 0, β \\to 0$",
+            "X_{(n)}",
+            "max",
+            "3 0",
+            "P(30\\lambda)",
+            "e^{-30\\lambda}",
+            "k!",
+        ):
+            with self.subTest(token=token):
+                if token == "3 0":
+                    self.assertNotIn(token, repaired)
+                else:
+                    self.assertIn(token, repaired)
+
     def test_random_process_pdf_extraction_restores_key_body_text_when_available(self):
         sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
         if not sample_pdf.exists():
             self.skipTest("随机过程三次作业答案.pdf sample is not available")
-        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+
+        import fitz
+
+        with fitz.open(sample_pdf) as doc:
+            source_text = "\n".join(page.get_text(sort=True) for page in doc)
+        with mock.patch(
+            "source_extract.extract_pdf_to_markdown",
+            return_value={"markdown": source_text, "source": "mineru", "warnings": []},
+        ):
             result = extract_source_to_markdown(sample_pdf)
         markdown = result["markdown"]
         for token in ("平稳分布", "平稳方程", "故若上式有限", "平稳概率分布", "归纳得证"):
@@ -1490,17 +2023,14 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             r"平\s+(?:分布|方程|概率分布)|(?:分布|方程|概率分布)[，。]?稳|故稳|只稳|分稳布|由 稳",
         )
 
-    def test_pdf_extraction_uses_text_layer_when_mineru_connection_drops(self):
+    def test_pdf_extraction_raises_when_mineru_connection_drops(self):
         sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
         if not sample_pdf.exists():
             self.skipTest("随机过程三次作业答案.pdf sample is not available")
 
         with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=ConnectionResetError("Remote end closed")):
-            result = extract_source_to_markdown(sample_pdf)
-
-        self.assertEqual(result["source"], "pymupdf_pdf_fallback")
-        self.assertIn("平稳分布", result["markdown"])
-        self.assertTrue(result["warnings"])
+            with self.assertRaises(ConnectionResetError):
+                extract_source_to_markdown(sample_pdf)
 
     def assert_random_process_debug_matches_source_counts(self, source_text, debug_text, *, require_precise_tokens=False):
         compact_debug = re.sub(r"\s+", "", debug_text)
@@ -1533,7 +2063,7 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         ):
             self.assertIn(token, compact_debug)
 
-    def test_random_process_pdf_fallback_render_debug_preserves_cjk_and_digit_counts_when_available(self):
+    def test_random_process_mineru_pdf_render_debug_preserves_cjk_and_digit_counts_when_available(self):
         sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"
         if not sample_pdf.exists():
             self.skipTest("随机过程三次作业答案.pdf sample is not available")
@@ -1542,7 +2072,10 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
 
         with fitz.open(sample_pdf) as doc:
             source_text = "\n".join(page.get_text(sort=True) for page in doc)
-        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+        with mock.patch(
+            "source_extract.extract_pdf_to_markdown",
+            return_value={"markdown": source_text, "source": "mineru", "warnings": []},
+        ):
             result = extract_source_to_markdown(sample_pdf)
         debug_text = markdown_render_debug_text(result["markdown"], FONT_PATH)
 
@@ -1561,9 +2094,6 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
             result = extract_source_to_markdown(sample_pdf)
         except (MinerUConfigError, MinerUExtractionError, OSError) as exc:
             self.skipTest(f"MinerU is not available for live extraction: {exc}")
-        if result.get("source") != "mineru":
-            self.skipTest("MinerU is not configured; fallback coverage already exercises the sample")
-
         debug_text = markdown_render_debug_text(result["markdown"], FONT_PATH)
         self.assert_random_process_debug_matches_source_counts(
             source_text, debug_text, require_precise_tokens=True
@@ -1574,7 +2104,14 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         if not sample_pdf.exists():
             self.skipTest("随机过程三次作业答案.pdf sample is not available")
 
-        with mock.patch("source_extract.extract_pdf_to_markdown", side_effect=MinerUConfigError("MINERU_BASE_URL missing")):
+        import fitz
+
+        with fitz.open(sample_pdf) as doc:
+            source_text = "\n".join(page.get_text(sort=True) for page in doc)
+        with mock.patch(
+            "source_extract.extract_pdf_to_markdown",
+            return_value={"markdown": source_text, "source": "mineru", "warnings": []},
+        ):
             result = extract_source_to_markdown(sample_pdf)
         expected_debug = markdown_render_debug_text(result["markdown"], FONT_PATH)
 
@@ -1687,6 +2224,37 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         message = user_facing_mineru_error(MinerUExtractionError("MinerU request failed: <urlopen error timed out>"))
         self.assertIn("PDF 识别服务 MinerU 连接超时", message)
         self.assertIn("MINERU_BASE_URL", message)
+
+    def test_mineru_startup_validation_rejects_loopback_public_url(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "MINERU_BASE_URL": "https://mineru.example/api/v4",
+                "MINERU_API_TOKEN": "token",
+                "MINERU_PUBLIC_BASE_URL": "http://127.0.0.1:5005",
+            },
+            clear=True,
+        ):
+            with self.assertRaises(MinerUConfigError):
+                validate_mineru_environment()
+
+    def test_mineru_startup_validation_uses_required_env_and_probes_service(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "MINERU_BASE_URL": "https://mineru.example/api/v4",
+                "MINERU_API_TOKEN": "token",
+                "MINERU_PUBLIC_BASE_URL": "http://100.64.0.1:5005",
+                "MINERU_MODEL_VERSION": "vlm",
+            },
+            clear=True,
+        ), mock.patch.object(mineru_adapter, "_probe_mineru_service") as probe:
+            config = validate_mineru_environment(timeout=3)
+
+        probe.assert_called_once_with(3)
+        self.assertEqual(config["base_url"], "https://mineru.example/api/v4")
+        self.assertEqual(config["public_base_url"], "http://100.64.0.1:5005")
+        self.assertEqual(config["model_version"], "vlm")
 
     def test_pdf_without_mineru_config_has_readable_error(self):
         with tempfile.TemporaryDirectory() as tmp:

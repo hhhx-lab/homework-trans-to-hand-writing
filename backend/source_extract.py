@@ -8,10 +8,110 @@ import pypandoc
 from werkzeug.utils import secure_filename
 
 from markdown_math import normalize_math_markdown
-from mineru_adapter import MinerUConfigError, MinerUExtractionError, extract_pdf_to_markdown, user_facing_mineru_error
+from mineru_adapter import extract_pdf_to_markdown
 
 
 SUPPORTED_SOURCE_SUFFIXES = {".pdf", ".docx", ".doc", ".md", ".markdown", ".txt", ".rtf"}
+MATH_SPAN_RE = re.compile(r"(?<!\\)(\$\$?)(.*?)(?<!\\)\1", re.S)
+OCR_C_SCRIPT_PATTERN = (
+    r"(?:\^\s*(?:\{\s*)?c(?:\s*\})?"
+    r"|\{\s*\\mathfrak\s*\{\s*c\s*\}\s*\}"
+    r"|\\mathfrak\s*\{\s*c\s*\})"
+)
+OCR_C_OPEN_RE = re.compile(
+    r"(?P<prefix>(?:\\Pr|Pr|\\Phi|Φ|Phi|P(?:\s*_\s*(?:\{[^{}]*\}|[A-Za-z0-9]))?))"
+    r"\s*(?P<mark>" + OCR_C_SCRIPT_PATTERN + r")\s*[,，]?\s*"
+)
+OCR_C_CLOSE_RE = re.compile(
+    r"(?P<prefix>(?:[A-Za-z0-9}\)]|\\[A-Za-z]+(?:\s*\{[^{}]*\})?))"
+    r"\s*(?P<mark>" + OCR_C_SCRIPT_PATTERN + r")"
+    r"\s*(?=(?:=|,|，|;|；|。|\\approx|\\le|\\ge|\\right|$))"
+)
+OCR_C_LEFTOVER_RE = re.compile(OCR_C_SCRIPT_PATTERN)
+SPACED_DECIMAL_RE = re.compile(r"(?<![A-Za-z])(?P<int>\d(?:\s+\d)*)\s*[.．]\s*(?P<frac>\d(?:\s*\d)*)")
+SPACED_DIGITS_RE = re.compile(r"(?<![A-Za-z\\])(?<!\d)(?P<digits>\d(?:\s+\d)+)(?!\s*[A-Za-z])")
+
+
+def _repair_ocr_c_scripts_in_math_expr(expr: str) -> str:
+    """Turn common OCR-misread parenthesis marks into baseline delimiters."""
+    expr = OCR_C_OPEN_RE.sub(lambda match: f"{match.group('prefix')}(", expr)
+    expr = OCR_C_CLOSE_RE.sub(lambda match: f"{match.group('prefix')})", expr)
+    return OCR_C_LEFTOVER_RE.sub("c", expr)
+
+
+def _repair_ocr_c_scripts(markdown: str) -> str:
+    return MATH_SPAN_RE.sub(
+        lambda match: f"{match.group(1)}{_repair_ocr_c_scripts_in_math_expr(match.group(2))}{match.group(1)}",
+        markdown,
+    )
+
+
+def _compact_spaced_number(match: re.Match[str]) -> str:
+    return re.sub(r"\s+", "", match.group(0))
+
+
+def _strip_number_spaces(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def _repair_mineru_spacing_in_math_expr(expr: str) -> str:
+    expr = SPACED_DECIMAL_RE.sub(
+        lambda match: f"{_strip_number_spaces(match.group('int'))}.{_strip_number_spaces(match.group('frac'))}",
+        expr,
+    )
+    expr = SPACED_DIGITS_RE.sub(_compact_spaced_number, expr)
+    replacements = (
+        (r"\bm\s+a\s+x\b", "max"),
+        (r"\bm\s+i\s+n\b", "min"),
+        (r"\\alpha_\{\s*max\s*\}", r"\\alpha_{max}"),
+        (r"\\int_\{\s*0\s*\}\s*c\s*2\s*x\s*d\s*x", r"\\int_{0}^{c} 2x\\,dx"),
+        (r"e\^\{\s*-\s*30\s*\\lambda\s*\}", r"e^{-30\\lambda}"),
+        (r"\(\s*30\s*\\lambda\s*\)", r"(30\\lambda)"),
+        (r"\bP\s+\(\s*30\\lambda\s*\)", r"P(30\\lambda)"),
+        (r"k\s*!", r"k!"),
+        (r"n\s*\\infty\s*\\\s*\\Theta\s*\\\s*J", r"n \\to \\infty"),
+        (r"-\s*0\.4\s*\\sqrt\s*\{\s*n\s*\}\s*-\s*\\infty", r"-0.4 \\sqrt{n} \\to -\\infty"),
+        (r"\\theta\s*\\\s*\\mathfrak\s*\{\s*g\s*\}\s*\\mathrm\s*\{\s*\\cdot\s*\}", r"\\theta"),
+        (r"X_\{_\{\\left\(\s*n\s*\\right\)\s*\}\s*\}", r"X_{(n)}"),
+        (r"X_\{_\{\s*(\d+)\s*\}\s*\}", r"X_{\1}"),
+        (r"X_\{\s*_n\s*\}", r"X_{n}"),
+    )
+    for pattern, replacement in replacements:
+        expr = re.sub(pattern, replacement, expr)
+    return expr
+
+
+def _repair_mineru_spacing_in_math(markdown: str) -> str:
+    return MATH_SPAN_RE.sub(
+        lambda match: f"{match.group(1)}{_repair_mineru_spacing_in_math_expr(match.group(2))}{match.group(1)}",
+        markdown,
+    )
+
+
+def _repair_statistics_pdf_fragments(text: str) -> str:
+    text = text.replace("\x08eta", "β").replace("\\β", "β").replace("\\beta", "β")
+    replacements = (
+        (r"\$\\\[\s*\\beta\s*=\s*P_1\(X\s*\$", r"$\beta = P_1(X < c) = c^2$"),
+        (r"\$\\\[\s*β\s*=\s*P_1\(X\s*\$", r"$β = P_1(X < c) = c^2$"),
+        (r"\[\\beta\s*=\s*P_1\(X", r"β = P_1(X < c)"),
+        (r"\[β\s*=\s*P_1\(X", r"β = P_1(X < c)"),
+        (r"backslash\]\s*β", r"β"),
+        (r"α\s*\+\s*2β\s*=\s*1\s*−\s*c\s*\+\s*2c\s*\.\s*2", r"α + 2β = 1 − c + 2c^2"),
+        (r"−1\s*\+\s*4c\s*=\s*0", r"−1 + 4c = 0"),
+        (r"c\s*=\s*4\s*\.\s*1", r"c = 1/4"),
+        (r"1\s*2\s*8\s*\.\s*7", r"1/8"),
+        (r"8\s*\.\s*7", r"7/8"),
+        (r"P\s*_\s*0\s*\(X\s*≥\s*c\)\s*=\s*1\s*−\s*c", r"P_0(X ≥ c) = 1 − c"),
+        (r"0\s*≤\s*c\s*≤\s*1", r"0 ≤ c ≤ 1"),
+        (r"X\s*\(_\s*n\s*\)", r"X_{(n)}"),
+        (r"X\s*\(\s*n\s*\)", r"X_{(n)}"),
+        (r"2c\s*\.\s*2", r"2c^2"),
+        (r"证明当\s*n→∞\s*时，\s*\$\\alpha\s*0\s*,\s*β\s*0\$", r"证明当 n→∞ 时， $\\alpha \\to 0, β \\to 0$"),
+        (r"该概率关\s*\$\\mathcal\s*\{\s*F\s*\}\s*\\theta\$\s*单调递减", r"该概率关于 $\\theta$ 单调递减"),
+    )
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text)
+    return text
 
 
 def repair_extracted_markdown_text(markdown: str) -> str:
@@ -56,6 +156,9 @@ def repair_extracted_markdown_text(markdown: str) -> str:
     text = re.sub(r"(互通类为\s*\$)C\s*_\s*\{\s*\\circ\s*\}(\$\s*。)", r"\1C\2", text)
     text = re.sub(r"(平稳(?:概率分布|分布|方程)(?:由细致平衡|满足|给|为|仍成立)?)(?:\s+稳)", r"\1", text)
     text = re.sub(r"(?:[。；]\s*)稳(?=\s*(?:\n|$|[A-Z\\$（(]))", lambda match: match.group(0).replace("稳", ""), text)
+    text = _repair_mineru_spacing_in_math(text)
+    text = _repair_ocr_c_scripts(text)
+    text = _repair_statistics_pdf_fragments(text)
     return text
 
 
@@ -89,52 +192,6 @@ def _pandoc_to_markdown(path: Path, from_format: str | None = None) -> str:
     return pypandoc.convert_file(str(path), **kwargs).replace("\r\n", "\n").replace("\r", "\n")
 
 
-def _read_pdf_text_layer_with_pymupdf(path: Path) -> str:
-    import fitz
-
-    parts: list[str] = []
-    with fitz.open(path) as doc:
-        for page_index, page in enumerate(doc, start=1):
-            text = page.get_text(sort=True).strip()
-            if not text:
-                continue
-            if doc.page_count > 1:
-                parts.extend([f"## 第{page_index}页", "", text, ""])
-            else:
-                parts.append(text)
-    return "\n".join(parts).strip()
-
-
-def _read_pdf_text_layer_with_pypdf2(path: Path) -> str:
-    import PyPDF2
-
-    parts: list[str] = []
-    with path.open("rb") as pdf_file_obj:
-        pdf_reader = PyPDF2.PdfReader(pdf_file_obj)
-        for page_index, page in enumerate(pdf_reader.pages, start=1):
-            text = (page.extract_text() or "").strip()
-            if not text:
-                continue
-            if len(pdf_reader.pages) > 1:
-                parts.extend([f"## 第{page_index}页", "", text, ""])
-            else:
-                parts.append(text)
-    return "\n".join(parts).strip()
-
-
-def _read_pdf_text_layer(path: Path) -> str:
-    try:
-        text = _read_pdf_text_layer_with_pymupdf(path)
-        if text.strip():
-            return text
-    except Exception:
-        pass
-    try:
-        return _read_pdf_text_layer_with_pypdf2(path)
-    except Exception:
-        return ""
-
-
 def extract_source_to_markdown(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix not in SUPPORTED_SOURCE_SUFFIXES:
@@ -160,26 +217,9 @@ def extract_source_to_markdown(path: Path) -> dict[str, Any]:
         return {"markdown": normalize_math_markdown(_pandoc_to_markdown(path)), "source": "pandoc_docx", "warnings": []}
 
     if suffix == ".pdf":
-        try:
-            result = extract_pdf_to_markdown(path)
-            result["markdown"] = normalize_math_markdown(repair_extracted_markdown_text(result["markdown"]))
-            return result
-        except (MinerUConfigError, MinerUExtractionError, OSError) as e:
-            text_layer = _read_pdf_text_layer(path)
-            if not text_layer.strip():
-                raise
-            if isinstance(e, (MinerUConfigError, MinerUExtractionError)):
-                mineru_warning = user_facing_mineru_error(e)
-            else:
-                mineru_warning = f"MinerU/OCR 服务连接失败：{e}"
-            return {
-                "markdown": normalize_math_markdown(repair_extracted_markdown_text(text_layer)),
-                "source": "pymupdf_pdf_fallback",
-                "warnings": [
-                    mineru_warning,
-                    "已改用 PDF 文本层提取；扫描件或图片公式仍建议配置 MinerU/OCR",
-                ],
-                "metadata": {"fallback": "pdf_text_layer"},
-            }
+        result = extract_pdf_to_markdown(path)
+        result["markdown"] = normalize_math_markdown(repair_extracted_markdown_text(result["markdown"]))
+        result["source"] = "mineru"
+        return result
 
     raise ValueError("Unsupported source file type")

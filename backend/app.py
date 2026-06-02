@@ -2,6 +2,8 @@ import asyncio
 import base64
 import re
 import time
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Optional, Union
 
 import psutil
@@ -30,7 +32,7 @@ from handright import Template, handwrite
 # from threading import Thread
 from PIL import Image, ImageDraw, ImageFont
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 import gc
 import io
 import json
@@ -38,10 +40,7 @@ import logging
 import os
 import shutil
 import tempfile
-from pathlib import Path
 from uuid import uuid4
-
-import PyPDF2
 
 # 文件模块
 from docx import Document
@@ -59,6 +58,7 @@ from mineru_adapter import (
     MinerUConfigError,
     MinerUExtractionError,
     STAGING_DIR as MINERU_STAGING_DIR,
+    validate_mineru_environment,
     user_facing_mineru_error,
 )
 from pdf import generate_pdf
@@ -340,7 +340,19 @@ fh.setFormatter(formatter)
 logger.addHandler(ch)
 logger.addHandler(fh)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    config = await asyncio.to_thread(validate_mineru_environment)
+    logger.info(
+        "MinerU startup check passed: base_url=%s public_base_url=%s model_version=%s",
+        config["base_url"],
+        config["public_base_url"],
+        config["model_version"],
+    )
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -452,43 +464,13 @@ def convert_docx_to_text(docx_file_path):
     # return None
 
 
-def read_pdf(file_path):
-    try:
-        import fitz
-
-        with fitz.open(file_path) as doc:
-            text = "\n".join(page.get_text(sort=True) for page in doc)
-        if text.strip():
-            return text
-    except Exception:
-        logger.exception("PyMuPDF PDF text extraction failed, falling back to PyPDF2")
-
-    text = ""
-    with open(file_path, "rb") as pdf_file_obj:
-        pdf_reader = PyPDF2.PdfReader(pdf_file_obj)
-        for page_num in range(len(pdf_reader.pages)):
-            page_obj = pdf_reader.pages[page_num]
-            text += page_obj.extract_text() or ""
-    return text
-
-
 def extract_textfileprocess_content(path: Path) -> dict[str, Any]:
-    suffix = path.suffix.lower()
-    try:
-        result = extract_source_to_markdown(path)
-        return {
-            "text": result["markdown"],
-            "source": result.get("source"),
-            "warnings": result.get("warnings", []),
-        }
-    except (MinerUConfigError, MinerUExtractionError) as e:
-        if suffix == ".pdf":
-            return {
-                "text": normalize_math_markdown(read_pdf(str(path))),
-                "source": "pypdf2_pdf_fallback",
-                "warnings": [user_facing_mineru_error(e)],
-            }
-        raise
+    result = extract_source_to_markdown(path)
+    return {
+        "text": result["markdown"],
+        "source": result.get("source"),
+        "warnings": result.get("warnings", []),
+    }
 
 
 def handle_exceptions(f):

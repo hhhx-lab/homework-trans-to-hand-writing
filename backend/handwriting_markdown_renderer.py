@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import html
+import io
 import math
 import random
 import re
 import tempfile
+import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -478,6 +483,7 @@ LATEX_RESIDUAL_RE = re.compile(
 )
 IMAGE_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.I)
+HTML_IMAGE_SRC_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*['\"]([^'\"]+)['\"][^>]*>", re.I)
 COMMAND_FALLBACKS = {
     "overline": "¯",
     "underline": "_",
@@ -562,6 +568,10 @@ HANDWRITING_MATH_FALLBACK_FONT_NAMES = (
     "云烟体.ttf",
     "李国夫手写体.ttf",
 )
+STABLE_MATH_GLYPHS = frozenset(".,;:()[]{}~c")
+PLAIN_TEXT_MATH_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-=*/<>≤≥_{}[](),.;:|^")
+SCRIPT_SCALE = 0.70
+DECIMAL_DOT_RE = re.compile(r"(?<=\d)\.(?=\d)")
 
 
 def _jitter_guard(sigma: float | int | None) -> int:
@@ -656,6 +666,7 @@ class FontCache:
             self._handwriting_paths.add(base_path.resolve() if base_path.exists() else base_path)
         self._fallback_paths = [path for path in FALLBACK_FONT_PATHS if path.exists()]
         self._fallback_paths = handwriting_paths + [path for path in self._fallback_paths if path not in handwriting_paths]
+        self._math_fallback_paths = handwriting_paths + [path for path in self._fallback_paths if path not in handwriting_paths]
 
     def get(self, size: int):
         size = max(8, int(size))
@@ -675,6 +686,16 @@ class FontCache:
             if _font_supports_text(fallback, text):
                 return fallback
         return font
+
+    def get_math_for_text(self, text: str, size: int):
+        for path in self._math_fallback_paths:
+            key = (path, max(8, int(size)))
+            if key not in self._fallback_cache:
+                self._fallback_cache[key] = ImageFont.truetype(str(path), size=key[1])
+            fallback = self._fallback_cache[key]
+            if _font_supports_text(fallback, text):
+                return fallback
+        return self.get_for_text(text, size)
 
     def is_handwriting_font(self, font: ImageFont.FreeTypeFont) -> bool:
         path = _resolved_font_path(font)
@@ -698,6 +719,7 @@ class DrawContext:
         self.config = config
         self.rand = rand
         self.depth = 0
+        self.math_depth = 0
 
     def color(self) -> tuple[int, int, int]:
         delta = self.rand.gauss(0, self.config.ink_depth_sigma) if self.config.ink_depth_sigma else 0
@@ -716,6 +738,14 @@ class DrawContext:
             yield
         finally:
             self.depth -= 1
+
+    @contextmanager
+    def math(self):
+        self.math_depth += 1
+        try:
+            yield
+        finally:
+            self.math_depth -= 1
 
     def hand_line(self, x1: int, y1: int, x2: int, y2: int, *, width: int = 1, wobble: float | None = None) -> None:
         wobble = wobble if wobble is not None else max(1.0, self.config.perturb_y_sigma or 1)
@@ -800,18 +830,19 @@ class TextBox(Box):
         return width, height, baseline
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
-        dx, dy = ctx.jitter()
+        stable_math = ctx.math_depth > 0 and bool(self.text.strip())
+        dx, dy = (0, 0) if stable_math else ctx.jitter()
         actual_size = self.size
-        if ctx.config.font_size_sigma:
+        if ctx.config.font_size_sigma and not stable_math:
             actual_size = max(8, round(ctx.rand.gauss(self.size, ctx.config.font_size_sigma)))
-        font = ctx.fonts.get_for_text(self.text or " ", actual_size)
+        font = self.font if actual_size == self.size else ctx.fonts.get_for_text(self.text or " ", actual_size)
         if self.uses_handwritten_symbol:
             self._draw_handwritten_symbol(ctx, x + dx, y + dy, actual_size)
             return
         if self._uses_synthetic_handwriting(ctx.fonts, font, self.text):
             self._draw_synthetic_text(ctx, font, x + dx, y + dy)
             return
-        angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
+        angle_sigma = 0.0 if stable_math else max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
         if self.text.strip() and angle_sigma and ctx.depth > 0:
             bbox = font.getbbox(self.text)
             width = max(1, bbox[2] - bbox[0] + 8)
@@ -854,7 +885,7 @@ class TextBox(Box):
         layer = Image.new("RGBA", (width, height), ctx.color() + (0,))
         layer.putalpha(mask)
 
-        angle_sigma = max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
+        angle_sigma = 0.0 if ctx.math_depth > 0 else max(0.0, float(ctx.config.perturb_theta_sigma or 0.0))
         if self.text.strip() and angle_sigma and ctx.depth > 0:
             angle = math.degrees(ctx.rand.gauss(0, angle_sigma * 0.35))
             rotated = layer.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
@@ -1260,6 +1291,176 @@ class TextBox(Box):
         self._draw_synthetic_text(ctx, self.font, x, y)
 
 
+class MathTextBox(TextBox):
+    def __init__(self, text: str, fonts: FontCache, size: int):
+        self.uses_stable_math_glyph = text in STABLE_MATH_GLYPHS
+        super().__init__(text, fonts, size)
+        if not self.uses_stable_math_glyph:
+            self.font = fonts.get_math_for_text(text or " ", size)
+            self.uses_handwritten_symbol = len(text) == 1 and text in HAND_DRAWN_MATH_SYMBOLS
+            self.uses_synthetic_handwriting = self._uses_synthetic_handwriting(fonts, self.font, text)
+            if self.uses_handwritten_symbol:
+                self.width, self.height, self.baseline = self._symbol_metrics(text, size)
+            else:
+                left, top, right, bottom = self.font.getbbox(text or " ")
+                self.width = max(1, right - left)
+                ascent, descent = self.font.getmetrics()
+                self.baseline = ascent
+                self.height = max(1, ascent + descent, bottom - top)
+
+        if self.uses_stable_math_glyph:
+            self.width, self.height, self.baseline = self._stable_metrics(text, size)
+        elif len(text) == 1 and text in {"a", "c", "e", "m", "n", "o", "r", "s", "u", "v", "w", "x", "z"}:
+            self.height = max(1, int(self.height * 0.84))
+            self.baseline = max(1, min(self.height - 2, int(self.baseline * 0.82)))
+
+    @staticmethod
+    def _stable_metrics(text: str, size: int) -> tuple[int, int, int]:
+        if text in {".", ",", ";", ":"}:
+            return max(6, int(size * 0.20)), max(10, int(size * 1.02)), max(9, int(size * 0.92))
+        if text == "c":
+            return max(14, int(size * 0.48)), max(12, int(size * 0.96)), max(10, int(size * 0.82))
+        if text == "~":
+            return max(14, int(size * 0.42)), max(10, int(size * 0.58)), max(8, int(size * 0.44))
+        if text in {"(", ")", "[", "]"}:
+            return max(10, int(size * 0.42)), max(12, int(size * 1.04)), max(8, int(size * 0.82))
+        if text in {"{", "}"}:
+            return max(10, int(size * 0.42)), max(12, int(size * 1.08)), max(8, int(size * 0.82))
+        return max(1, int(size * 0.24)), max(8, int(size * 1.02)), max(6, int(size * 0.82))
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        if not self.uses_stable_math_glyph:
+            with ctx.math():
+                super().draw(ctx, x, y)
+            return
+        self._draw_stable_math_glyph(ctx, x, y)
+
+    def _draw_stable_math_glyph(self, ctx: DrawContext, x: int, y: int) -> None:
+        symbol = self.text
+        stroke = max(1, self.size // 26)
+        color = ctx.color()
+
+        def stroke_points(points: list[tuple[float, float]], width: int | None = None) -> None:
+            rounded = [(round(px), round(py)) for px, py in points]
+            ctx.draw.line(rounded, fill=color, width=width or stroke, joint="curve")
+            if (width or stroke) <= 2:
+                shifted = [(px + 1, py) for px, py in rounded]
+                ctx.draw.line(shifted, fill=color, width=max(1, (width or stroke) - 1), joint="curve")
+
+        def dot(cx: float, cy: float, radius: float | None = None) -> None:
+            r = max(1.8, radius if radius is not None else self.size * 0.045)
+            ctx.draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=color)
+
+        baseline_y = y + self.baseline
+        center_x = x + self.width / 2
+        if symbol == ".":
+            dot(center_x, baseline_y - max(1.2, self.size * 0.02))
+            return
+        if symbol == "~":
+            wave_y = baseline_y - max(3, self.size * 0.22)
+            left = x + max(1, self.width * 0.08)
+            right = x + self.width - max(1, self.width * 0.08)
+            span = max(8, right - left)
+            points = [
+                (left, wave_y),
+                (left + span * 0.22, wave_y - self.size * 0.08),
+                (left + span * 0.48, wave_y + self.size * 0.05),
+                (left + span * 0.74, wave_y - self.size * 0.06),
+                (right, wave_y + 1),
+            ]
+            stroke_points(points, width=max(1, stroke))
+            return
+        if symbol == "c":
+            cx = x + self.width * 0.56
+            cy = baseline_y - self.size * 0.24
+            rx = max(5.0, self.width * 0.38)
+            ry = max(7.0, self.size * 0.24)
+            steps = 18
+            points = [
+                (
+                    cx + math.cos(math.radians(42 + 276 * i / steps)) * rx,
+                    cy + math.sin(math.radians(42 + 276 * i / steps)) * ry,
+                )
+                for i in range(steps + 1)
+            ]
+            stroke_points(points)
+            return
+        if symbol == ",":
+            dot(center_x - self.width * 0.04, baseline_y - max(1.5, self.size * 0.03))
+            stroke_points(
+                [
+                    (center_x + self.width * 0.08, baseline_y - self.size * 0.01),
+                    (center_x - self.width * 0.05, baseline_y + self.size * 0.13),
+                ],
+                width=max(1, stroke - 1),
+            )
+            return
+        if symbol == ":":
+            dot(center_x, baseline_y - self.size * 0.42, self.size * 0.038)
+            dot(center_x, baseline_y - self.size * 0.14, self.size * 0.038)
+            return
+        if symbol == ";":
+            dot(center_x, baseline_y - self.size * 0.42, self.size * 0.038)
+            dot(center_x - self.width * 0.04, baseline_y - self.size * 0.12, self.size * 0.04)
+            stroke_points(
+                [
+                    (center_x + self.width * 0.08, baseline_y - self.size * 0.06),
+                    (center_x - self.width * 0.05, baseline_y + self.size * 0.10),
+                ],
+                width=max(1, stroke - 1),
+            )
+            return
+
+        top = y + max(1, int(self.size * 0.08))
+        bottom = y + self.height - max(1, int(self.size * 0.10))
+        mid_y = (top + bottom) / 2
+        if symbol in {"(", ")"}:
+            left = x + self.width * 0.18
+            right = x + self.width * 0.82
+            span = right - left
+            steps = 18
+            if symbol == "(":
+                points = [
+                    (
+                        right - math.sin(math.pi * i / steps) * span,
+                        top + (bottom - top) * i / steps + math.sin(math.pi * 2 * i / steps) * 0.45,
+                    )
+                    for i in range(steps + 1)
+                ]
+            else:
+                points = [
+                    (
+                        left + math.sin(math.pi * i / steps) * span,
+                        top + (bottom - top) * i / steps + math.sin(math.pi * 2 * i / steps + 0.4) * 0.45,
+                    )
+                    for i in range(steps + 1)
+                ]
+            stroke_points(points)
+            return
+
+        if symbol in {"[", "]"}:
+            edge_x = x + (self.width * 0.28 if symbol == "[" else self.width * 0.72)
+            inner_x = x + (self.width * 0.76 if symbol == "[" else self.width * 0.24)
+            stroke_points([(inner_x, top), (edge_x, top), (edge_x, bottom), (inner_x, bottom)])
+            return
+
+        if symbol in {"{", "}"}:
+            outer_x = x + (self.width * 0.80 if symbol == "{" else self.width * 0.20)
+            inner_x = x + (self.width * 0.25 if symbol == "{" else self.width * 0.75)
+            notch_x = x + self.width * 0.50
+            points = [
+                (outer_x, top),
+                (inner_x, top + (bottom - top) * 0.22),
+                (notch_x, mid_y),
+                (inner_x, top + (bottom - top) * 0.78),
+                (outer_x, bottom),
+            ]
+            stroke_points(points)
+            return
+
+        super().draw(ctx, x, y)
+
+
 class HBox(Box):
     def __init__(self, children: list[Box], gap: int = 0):
         self.children = children
@@ -1277,6 +1478,12 @@ class HBox(Box):
 
     def debug_text(self) -> str:
         return "".join(child.debug_text() for child in self.children)
+
+
+class MathHBox(HBox):
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        with ctx.math():
+            super().draw(ctx, x, y)
 
 
 class FractionBox(Box):
@@ -1379,6 +1586,9 @@ class ScriptBox(Box):
         self.sup = sup
         self.sub = sub
         self.limits = limits
+        self.side_gap = max(3, base.height // 10)
+        self.sup_shift = max(4, base.height // 3)
+        self.sub_shift = max(4, base.height // 5)
         if limits:
             side = max(sup.width if sup else 0, sub.width if sub else 0)
             self.width = max(base.width, side)
@@ -1388,32 +1598,33 @@ class ScriptBox(Box):
             self.baseline = top + base.baseline
         else:
             side_width = max(sup.width if sup else 0, sub.width if sub else 0)
-            self.width = base.width + side_width
-            sup_top = sup.height if sup else 0
-            sub_bottom = sub.height if sub else 0
-            self.baseline = base.baseline + max(0, sup_top - base.baseline // 2)
-            self.height = self.baseline + max(base.height - base.baseline, sub_bottom)
+            self.width = base.width + self.side_gap + side_width
+            sup_above_baseline = sup.baseline + self.sup_shift if sup else 0
+            sub_below_baseline = sub.height - sub.baseline + self.sub_shift if sub else 0
+            self.baseline = max(base.baseline, sup_above_baseline)
+            self.height = self.baseline + max(base.height - base.baseline, sub_below_baseline)
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
         if self.limits:
             if self.sup:
                 with ctx.nested():
-                    self.sup.draw(ctx, x + (self.width - self.sup.width) // 2 + ctx.rand.choice([-2, -1, 0, 1]), y)
+                    self.sup.draw(ctx, x + (self.width - self.sup.width) // 2, y)
             base_y = y + (self.sup.height + 2 if self.sup else 0)
             with ctx.nested():
                 self.base.draw(ctx, x + (self.width - self.base.width) // 2, base_y)
             if self.sub:
                 with ctx.nested():
-                    self.sub.draw(ctx, x + (self.width - self.sub.width) // 2 + ctx.rand.choice([-2, -1, 0, 1]), base_y + self.base.height + 2)
+                    self.sub.draw(ctx, x + (self.width - self.sub.width) // 2, base_y + self.base.height + 2)
             return
         with ctx.nested():
             self.base.draw(ctx, x, y + self.baseline - self.base.baseline)
+        side_x = x + self.base.width + self.side_gap
         if self.sup:
             with ctx.nested():
-                self.sup.draw(ctx, x + self.base.width + ctx.rand.choice([-1, 0, 1]), y + ctx.rand.choice([-1, 0, 1]))
+                self.sup.draw(ctx, side_x, y + self.baseline - self.sup.baseline - self.sup_shift)
         if self.sub:
             with ctx.nested():
-                self.sub.draw(ctx, x + self.base.width + ctx.rand.choice([-1, 0, 1]), y + self.baseline + 2 + ctx.rand.choice([-1, 0, 1]))
+                self.sub.draw(ctx, side_x, y + self.baseline - self.sub.baseline + self.sub_shift)
 
     def debug_text(self) -> str:
         text = self.base.debug_text()
@@ -1422,6 +1633,106 @@ class ScriptBox(Box):
         if self.sup:
             text += "^" + self.sup.debug_text()
         return text
+
+
+def _stretchy_delim_width(delim: str, size: int, fonts: FontCache) -> int:
+    if delim in {"(", ")", "[", "]", "{", "}", "|", "‖"}:
+        return max(10, int(size * 0.36))
+    return max(1, MathTextBox(delim, fonts, size).width)
+
+
+def _draw_stretchy_delim(
+    ctx: DrawContext,
+    delim: str,
+    x: int,
+    y: int,
+    height: int,
+    width: int,
+    *,
+    size: int,
+) -> None:
+    stroke = max(1, size // 30)
+    wobble = max(1.0, size / 36)
+    if delim in {"(", ")"}:
+        inset = max(2, width // 3)
+        outer_x = x + (width - inset if delim == "(" else inset)
+        inner_x = x + (inset if delim == "(" else width - inset)
+        mid_y = y + height // 2
+        ctx.hand_polyline(
+            [
+                (outer_x, y + stroke),
+                (inner_x, y + height // 4),
+                (inner_x, mid_y),
+                (inner_x, y + height * 3 // 4),
+                (outer_x, y + height - stroke),
+            ],
+            width=stroke,
+            wobble=wobble,
+        )
+        return
+    if delim in {"[", "]"}:
+        edge_x = x + (stroke if delim == "[" else width - stroke)
+        inner_x = x + (width - stroke if delim == "[" else stroke)
+        ctx.hand_line(inner_x, y + stroke, edge_x, y + stroke, width=stroke, wobble=wobble)
+        ctx.hand_line(edge_x, y + stroke, edge_x, y + height - stroke, width=stroke, wobble=wobble)
+        ctx.hand_line(edge_x, y + height - stroke, inner_x, y + height - stroke, width=stroke, wobble=wobble)
+        return
+    if delim in {"|", "‖"}:
+        offsets = [0] if delim == "|" else [-width // 8, width // 8]
+        for offset in offsets:
+            edge_x = x + width // 2 + offset
+            ctx.hand_line(edge_x, y + stroke, edge_x + ctx.rand.choice([-1, 0, 1]), y + height - stroke, width=stroke, wobble=wobble)
+        return
+    if delim in {"{", "}"}:
+        mid_y = y + height // 2
+        outer_x = x + (width - stroke if delim == "{" else stroke)
+        inner_x = x + (width // 3 if delim == "{" else width * 2 // 3)
+        notch_x = x + width // 2
+        ctx.hand_polyline(
+            [
+                (outer_x, y + stroke),
+                (inner_x, y + height // 4),
+                (notch_x, mid_y),
+                (inner_x, y + height * 3 // 4),
+                (outer_x, y + height - stroke),
+            ],
+            width=stroke,
+            wobble=wobble,
+        )
+        return
+    TextBox(delim, ctx.fonts, height).draw(ctx, x, y)
+
+
+class DelimitedBox(Box):
+    def __init__(self, child: Box, left: str, right: str, size: int, fonts: FontCache):
+        self.child = child
+        self.left = left
+        self.right = right
+        self.size = size
+        self.pad = max(5, size // 12)
+        self.gap = max(2, size // 24)
+        self.left_width = _stretchy_delim_width(left, size, fonts) if left else 0
+        self.right_width = _stretchy_delim_width(right, size, fonts) if right else 0
+        self.width = self.left_width + self.right_width + child.width
+        if left:
+            self.width += self.gap
+        if right:
+            self.width += self.gap
+        self.height = child.height + self.pad * 2
+        self.baseline = child.baseline + self.pad
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        cursor_x = x
+        if self.left:
+            _draw_stretchy_delim(ctx, self.left, cursor_x, y, self.height, self.left_width, size=self.size)
+            cursor_x += self.left_width + self.gap
+        with ctx.nested():
+            self.child.draw(ctx, cursor_x, y + self.pad)
+        if self.right:
+            _draw_stretchy_delim(ctx, self.right, x + self.width - self.right_width, y, self.height, self.right_width, size=self.size)
+
+    def debug_text(self) -> str:
+        return f"{self.left}{self.child.debug_text()}{self.right}"
 
 
 class MatrixBox(Box):
@@ -1450,50 +1761,7 @@ class MatrixBox(Box):
         return {"pmatrix": ")", "bmatrix": "]", "Bmatrix": "}", "vmatrix": "|", "Vmatrix": "‖"}.get(self.env, "")
 
     def _draw_delim(self, ctx: DrawContext, delim: str, x: int, y: int, height: int, width: int, *, left: bool) -> None:
-        stroke = max(1, self.pad // 4)
-        if delim in {"(", ")"}:
-            inset = max(2, width // 3)
-            outer_x = x + (width - inset if left else inset)
-            inner_x = x + (inset if left else width - inset)
-            mid_y = y + height // 2
-            ctx.hand_polyline(
-                [
-                    (outer_x, y + stroke),
-                    (inner_x, y + height // 4),
-                    (inner_x, mid_y),
-                    (inner_x, y + height * 3 // 4),
-                    (outer_x, y + height - stroke),
-                ],
-                width=stroke,
-                wobble=max(1.0, self.pad / 3),
-            )
-            return
-        if delim in {"[", "]"}:
-            edge_x = x + (width - stroke if left else stroke)
-            inner_x = x + (stroke if left else width - stroke)
-            ctx.hand_line(inner_x, y + stroke, edge_x, y + stroke, width=stroke, wobble=max(1.0, self.pad / 4))
-            ctx.hand_line(edge_x, y + stroke, edge_x, y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
-            ctx.hand_line(edge_x, y + height - stroke, inner_x, y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
-            return
-        if delim == "|":
-            edge_x = x + width // 2
-            ctx.hand_line(edge_x, y + stroke, edge_x + ctx.rand.choice([-1, 0, 1]), y + height - stroke, width=stroke, wobble=max(1.0, self.pad / 4))
-            return
-        if delim == "{":
-            mid_y = y + height // 2
-            ctx.hand_polyline(
-                [
-                    (x + width - stroke, y + stroke),
-                    (x + width // 3, y + height // 4),
-                    (x + width // 2, mid_y),
-                    (x + width // 3, y + height * 3 // 4),
-                    (x + width - stroke, y + height - stroke),
-                ],
-                width=stroke,
-                wobble=max(1.0, self.pad / 3),
-            )
-            return
-        TextBox(delim, ctx.fonts, height).draw(ctx, x, y)
+        _draw_stretchy_delim(ctx, delim, x, y, height, width, size=max(self.pad * 4, height // 2))
 
     def draw(self, ctx: DrawContext, x: int, y: int) -> None:
         cursor_x = x
@@ -1527,7 +1795,7 @@ class DecoratedBox(Box):
         self.mark = mark
         self.size = size
         self.pad = max(3, size // 12)
-        extra_top = max(5, size // 6) if mark in {"¯", "^", "~", "→", "←", "⌒", "´", "`", "¨", "˘", "ˇ", "˚", "·", "··"} else 0
+        extra_top = max(4, size // 7) if mark in {"¯", "^", "~", "→", "←", "⌒", "´", "`", "¨", "˘", "ˇ", "˚", "·", "··"} else 0
         extra_bottom = max(4, size // 8) if mark in {"_", "⌣", "_→", "_←"} else 0
         self.width = child.width + self.pad * 2
         self.height = child.height + extra_top + extra_bottom
@@ -1550,12 +1818,16 @@ class DecoratedBox(Box):
             mid = child_x + self.child.width // 2
             ctx.hand_polyline([(mid - self.pad, yy + self.pad), (mid, yy), (mid + self.pad, yy + self.pad)], width=stroke, wobble=max(1.0, self.pad / 3))
         elif self.mark == "~":
-            yy = y + max(1, self.pad)
+            yy = y + max(2, self.pad + self.size // 14)
+            left = child_x - max(1, self.pad // 2)
+            right = child_x + self.child.width + max(1, self.pad // 2)
+            span = max(8, right - left)
             points = [
-                (child_x, yy),
-                (child_x + self.child.width // 3, yy - self.pad // 2),
-                (child_x + self.child.width * 2 // 3, yy + self.pad // 2),
-                (child_x + self.child.width, yy),
+                (left, yy),
+                (left + span * 0.22, yy - self.pad * 0.42),
+                (left + span * 0.48, yy + self.pad * 0.24),
+                (left + span * 0.74, yy - self.pad * 0.28),
+                (right, yy + 1),
             ]
             ctx.hand_polyline(points, width=stroke, wobble=max(1.0, self.pad / 3))
         elif self.mark in {"´", "`"}:
@@ -1678,12 +1950,71 @@ class ScaledBox(Box):
         return self.child.debug_text()
 
 
+DATA_IMAGE_RE = re.compile(r"^data:image/[^;,]+;base64,(.+)$", re.I | re.S)
+
+
+def _load_image_source(source: str) -> Image.Image | None:
+    source = html.unescape((source or "").strip()).strip("<>")
+    if not source:
+        return None
+    data_match = DATA_IMAGE_RE.match(source)
+    if data_match:
+        try:
+            data = base64.b64decode(data_match.group(1), validate=False)
+            return Image.open(io.BytesIO(data)).convert("RGBA")
+        except (binascii.Error, OSError, ValueError):
+            return None
+    parsed = urllib.parse.urlparse(source)
+    if parsed.scheme in {"http", "https"}:
+        return None
+    path_text = urllib.parse.unquote(parsed.path if parsed.scheme == "file" else source)
+    path = Path(path_text)
+    if not path.exists():
+        return None
+    try:
+        return Image.open(path).convert("RGBA")
+    except OSError:
+        return None
+
+
+class ImageBox(Box):
+    def __init__(self, source: str, max_width: int, max_height: int):
+        image = _load_image_source(source)
+        if image is None:
+            raise ValueError(f"Cannot load image source: {source[:80]}")
+        scale = min(
+            1.0,
+            max(1, max_width) / max(1, image.width),
+            max(1, max_height) / max(1, image.height),
+        )
+        self.source = source
+        self.image = image
+        self.width = max(1, int(image.width * scale))
+        self.height = max(1, int(image.height * scale))
+        self.baseline = 0
+
+    def draw(self, ctx: DrawContext, x: int, y: int) -> None:
+        image = self.image
+        if image.size != (self.width, self.height):
+            image = image.resize((self.width, self.height), Image.Resampling.LANCZOS)
+        if image.mode == "RGBA":
+            ctx.image.paste(image.convert(ctx.image.mode), (x, y), image)
+        else:
+            ctx.image.paste(image.convert(ctx.image.mode), (x, y))
+
+    def debug_text(self) -> str:
+        return "[图片]"
+
+
 class LatexParser:
     def __init__(self, text: str, fonts: FontCache, size: int):
         self.text = text.strip()
         self.fonts = fonts
         self.size = size
         self.pos = 0
+
+    def _math_text(self, text: str, size: int | None = None) -> MathTextBox:
+        return MathTextBox(text, self.fonts, self.size if size is None else size)
 
     def parse(self) -> Box:
         box = self._parse_until("")
@@ -1725,7 +2056,7 @@ class LatexParser:
                 if infix_name in {"above", "abovewithdelims"}:
                     thickness = self._read_dimension_token()
                 self._skip_space()
-                numerator = HBox(children, gap=max(0, self.size // 18)) if children else TextBox(" ", self.fonts, self.size)
+                numerator = MathHBox(children, gap=max(0, self.size // 18)) if children else TextBox(" ", self.fonts, self.size)
                 denominator = self._parse_until(terminator)
                 if infix_name in {"over", "overwithdelims"}:
                     return self._wrap_with_delimiters(
@@ -1759,7 +2090,7 @@ class LatexParser:
             atom = self._parse_scripts(atom)
             if atom:
                 children.append(atom)
-        return HBox(children, gap=max(0, self.size // 18))
+        return MathHBox(children, gap=max(0, self.size // 18))
 
     def _parse_atom(self) -> Box:
         ch = self.text[self.pos]
@@ -1773,9 +2104,12 @@ class LatexParser:
             return self._parse_command()
         if ch == "&":
             self.pos += 1
-            return TextBox("&", self.fonts, self.size)
+            return self._math_text("&")
+        if ch == "~":
+            self.pos += 1
+            return TextBox(" ", self.fonts, self.size // 2)
         self.pos += 1
-        return TextBox(ch, self.fonts, self.size)
+        return self._math_text(ch)
 
     def _read_command_name(self) -> str:
         self.pos += 1
@@ -1888,13 +2222,32 @@ class LatexParser:
             return None
         return LatexParser(content, self.fonts, max(8, int(self.size * scale))).parse()
 
+    @staticmethod
+    def _environment_command_end(text: str, index: int, command: str) -> int | None:
+        marker = f"\\{command}" + "{"
+        if not text.startswith(marker, index):
+            return None
+        end = text.find("}", index + len(marker))
+        return end + 1 if end >= 0 else None
+
     def _split_matrix_rows(self, content: str) -> list[str]:
         rows: list[str] = []
         start = 0
         depth = 0
+        env_depth = 0
         i = 0
         while i < len(content):
-            if content.startswith(r"\\", i) and depth == 0:
+            begin_end = self._environment_command_end(content, i, "begin")
+            if begin_end is not None:
+                env_depth += 1
+                i = begin_end
+                continue
+            end_end = self._environment_command_end(content, i, "end")
+            if end_end is not None:
+                env_depth = max(0, env_depth - 1)
+                i = end_end
+                continue
+            if content.startswith(r"\\", i) and depth == 0 and env_depth == 0:
                 rows.append(content[start:i])
                 i += 2
                 start = i
@@ -1915,8 +2268,19 @@ class LatexParser:
         cells: list[str] = []
         start = 0
         depth = 0
+        env_depth = 0
         i = 0
         while i < len(row):
+            begin_end = self._environment_command_end(row, i, "begin")
+            if begin_end is not None:
+                env_depth += 1
+                i = begin_end
+                continue
+            end_end = self._environment_command_end(row, i, "end")
+            if end_end is not None:
+                env_depth = max(0, env_depth - 1)
+                i = end_end
+                continue
             ch = row[i]
             if ch == "\\":
                 i += 2 if i + 1 < len(row) else 1
@@ -1925,7 +2289,7 @@ class LatexParser:
                 depth += 1
             elif ch == "}":
                 depth = max(0, depth - 1)
-            elif ch == "&" and depth == 0:
+            elif ch == "&" and depth == 0 and env_depth == 0:
                 cells.append(row[start:i])
                 start = i + 1
             i += 1
@@ -1943,14 +2307,14 @@ class LatexParser:
                 rows.append(cells)
         return MatrixBox(rows, env, self.size, self.fonts)
 
-    def _parse_group(self, scale: float = 1.0) -> Box:
+    def _parse_group(self, scale: float = 1.0, *, consume_scripts: bool = True) -> Box:
         self._skip_space()
         if self.pos < len(self.text) and self.text[self.pos] != "{":
             old_size = self.size
             self.size = max(8, int(self.size * scale))
             try:
                 atom = self._parse_atom()
-                return self._parse_scripts(atom)
+                return self._parse_scripts(atom) if consume_scripts else atom
             finally:
                 self.size = old_size
         content = self._read_group_text()
@@ -1975,13 +2339,7 @@ class LatexParser:
         return self.text[start:self.pos]
 
     def _wrap_with_delimiters(self, box: Box, left: str, right: str) -> Box:
-        children: list[Box] = []
-        if left:
-            children.append(TextBox(left, self.fonts, self.size))
-        children.append(box)
-        if right:
-            children.append(TextBox(right, self.fonts, self.size))
-        return HBox(children, gap=max(0, self.size // 24)) if len(children) > 1 else box
+        return DelimitedBox(box, left, right, self.size, self.fonts) if left or right else box
 
     def _read_until_top_level_command(self, name: str) -> str | None:
         marker = f"\\{name}"
@@ -2006,6 +2364,38 @@ class LatexParser:
             i += 1
         return None
 
+    def _read_until_matching_right(self) -> str | None:
+        start = self.pos
+        brace_depth = 0
+        left_depth = 0
+        i = self.pos
+        while i < len(self.text):
+            if self.text[i] == "\\":
+                if i + 1 < len(self.text) and self.text[i + 1] in "{}":
+                    i += 2
+                    continue
+                j = i + 1
+                while j < len(self.text) and self.text[j].isalpha():
+                    j += 1
+                command = self.text[i + 1 : j]
+                if brace_depth == 0:
+                    if command == "left":
+                        left_depth += 1
+                    elif command == "right":
+                        if left_depth == 0:
+                            content = self.text[start:i]
+                            self.pos = j
+                            return content
+                        left_depth -= 1
+                i = max(j, i + 1)
+                continue
+            if self.text[i] == "{":
+                brace_depth += 1
+            elif self.text[i] == "}":
+                brace_depth = max(0, brace_depth - 1)
+            i += 1
+        return None
+
     def _delimiter_text_from_group_content(self, content: str) -> str:
         content = content.strip()
         if not content or content == ".":
@@ -2022,19 +2412,19 @@ class LatexParser:
                 break
             args.append(self._parse_group(0.88))
         if not args:
-            return TextBox(name, self.fonts, self.size)
-        children: list[Box] = [TextBox(name, self.fonts, max(8, int(self.size * 0.86))), TextBox("(", self.fonts, self.size)]
+            return self._math_text(name)
+        children: list[Box] = [self._math_text(name, max(8, int(self.size * 0.86))), self._math_text("(")]
         for index, arg in enumerate(args):
             if index:
-                children.append(TextBox(",", self.fonts, self.size))
+                children.append(self._math_text(","))
             children.append(arg)
-        children.append(TextBox(")", self.fonts, self.size))
+        children.append(self._math_text(")"))
         return HBox(children, gap=max(0, self.size // 24))
 
     def _parse_not_command(self) -> Box:
         self._skip_space()
         if self.pos >= len(self.text):
-            return TextBox("¬", self.fonts, self.size)
+            return self._math_text("¬")
         if self.text[self.pos] == "\\":
             next_name = self._read_command_name()
             negated = {
@@ -2058,16 +2448,24 @@ class LatexParser:
                 "parallel": "∦",
                 "=": "≠",
             }
-            return TextBox(negated.get(next_name, "¬" + SYMBOLS.get(next_name, next_name)), self.fonts, self.size)
+            return self._math_text(negated.get(next_name, "¬" + SYMBOLS.get(next_name, next_name)))
         ch = self.text[self.pos]
         self.pos += 1
-        return TextBox({"=": "≠", "<": "≮", ">": "≯"}.get(ch, "¬" + ch), self.fonts, self.size)
+        return self._math_text({"=": "≠", "<": "≮", ">": "≯"}.get(ch, "¬" + ch))
 
     def _parse_command(self) -> Box:
         name = self._read_command_name()
-        if name in {"left", "right", "middle"}:
+        if name == "left":
             delimiter = self._read_delimiter()
-            return TextBox(delimiter, self.fonts, int(self.size * 1.05)) if delimiter else TextBox("", self.fonts, self.size)
+            content = self._read_until_matching_right()
+            if content is None:
+                return self._math_text(delimiter, int(self.size * 1.05)) if delimiter else TextBox("", self.fonts, self.size)
+            right = self._read_delimiter()
+            body = LatexParser(content, self.fonts, self.size).parse()
+            return self._wrap_with_delimiters(body, delimiter, right)
+        if name in {"right", "middle"}:
+            delimiter = self._read_delimiter()
+            return self._math_text(delimiter, int(self.size * 1.05)) if delimiter else TextBox("", self.fonts, self.size)
         if name in STYLE_COMMANDS:
             return TextBox("", self.fonts, self.size)
         if name in SIZE_DELIMITERS:
@@ -2100,6 +2498,11 @@ class LatexParser:
             self._read_group_text()
             self._read_group_text()
             return self._parse_group(0.9)
+        if name == "~":
+            self._skip_space()
+            if self.pos >= len(self.text) or self.text[self.pos] in {"}", "&", "^", "_", "+", "-", "=", ",", ";", ")", "]"}:
+                return self._math_text("~")
+            return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in COMMAND_FALLBACKS:
             return DecoratedBox(self._parse_group(), COMMAND_FALLBACKS[name], self.size)
         if name in {"operatorname", "operatornamewithlimits"}:
@@ -2128,10 +2531,10 @@ class LatexParser:
             fraction = FractionBox(numerator, denominator, max(5, self.size // 10))
             children: list[Box] = []
             if left:
-                children.append(TextBox(left, self.fonts, self.size))
+                children.append(self._math_text(left))
             children.append(fraction)
             if right:
-                children.append(TextBox(right, self.fonts, self.size))
+                children.append(self._math_text(right))
             return HBox(children, gap=max(0, self.size // 24))
         if name in {"binom", "dbinom", "tbinom"}:
             upper = self._parse_group(0.78)
@@ -2152,7 +2555,7 @@ class LatexParser:
                 "xLeftarrow": "⇐",
                 "xLeftrightarrow": "⇔",
             }
-            arrow = TextBox(arrow_symbols[name], self.fonts, int(self.size * 1.18))
+            arrow = self._math_text(arrow_symbols[name], int(self.size * 1.18))
             return ScriptBox(arrow, above, below, limits=True)
         if name == "overset":
             over = self._parse_group(0.62)
@@ -2181,31 +2584,31 @@ class LatexParser:
             return self._parse_group()
         if name == "overbrace":
             child = self._parse_group(0.9)
-            return ScriptBox(child, TextBox("⏞", self.fonts, max(8, int(self.size * 0.7))), None, limits=True)
+            return ScriptBox(child, self._math_text("⏞", max(8, int(self.size * 0.7))), None, limits=True)
         if name == "underbrace":
             child = self._parse_group(0.9)
-            return ScriptBox(child, None, TextBox("⏟", self.fonts, max(8, int(self.size * 0.7))), limits=True)
+            return ScriptBox(child, None, self._math_text("⏟", max(8, int(self.size * 0.7))), limits=True)
         if name == "hdotsfor":
             count_text = self._read_group_text().strip()
             count = int(count_text) if count_text.isdigit() else 1
-            return TextBox("⋯" * max(1, min(count, 12)), self.fonts, self.size)
+            return self._math_text("⋯" * max(1, min(count, 12)))
         if name in {"pmod", "pod", "mod", "bmod"}:
-            content = self._parse_group(0.82) if name in {"pmod", "pod"} else TextBox("mod", self.fonts, max(8, int(self.size * 0.86)))
+            content = self._parse_group(0.82) if name in {"pmod", "pod"} else self._math_text("mod", max(8, int(self.size * 0.86)))
             if name == "pmod":
-                return HBox([TextBox("(mod ", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
+                return HBox([self._math_text("("), self._math_text("mod "), content, self._math_text(")")])
             if name == "pod":
-                return HBox([TextBox("(", self.fonts, self.size), content, TextBox(")", self.fonts, self.size)])
+                return HBox([self._math_text("("), content, self._math_text(")")])
             return content
         if name == "tag":
             self._skip_optional_star()
-            return HBox([TextBox("(", self.fonts, self.size), self._parse_group(0.82), TextBox(")", self.fonts, self.size)])
+            return HBox([self._math_text("("), self._parse_group(0.82), self._math_text(")")])
         if name in {"label", "notag", "nonumber"}:
             if name == "label":
                 self._read_group_text()
             return TextBox("", self.fonts, self.size)
         if name in {"ref", "eqref"}:
             content = self._read_group_text()
-            return TextBox(f"({content})" if name == "eqref" else content, self.fonts, self.size)
+            return HBox([self._math_text("("), self._math_text(content), self._math_text(")")]) if name == "eqref" else self._math_text(content)
         if name == "not":
             return self._parse_not_command()
         if name == "begin":
@@ -2220,26 +2623,45 @@ class LatexParser:
                 return self._parse_matrix_content(self._read_group_text(), PLAIN_TEX_MATRIX_COMMANDS[name])
             return TextBox("", self.fonts, self.size)
         if name in BIG_OPERATORS:
-            return TextBox(BIG_OPERATORS[name], self.fonts, int(self.size * (1.35 if name != "lim" else 1.0)))
+            return self._math_text(BIG_OPERATORS[name], int(self.size * (1.35 if name != "lim" else 1.0)))
         if name in GREEK:
-            return TextBox(GREEK[name], self.fonts, self.size)
+            return self._math_text(GREEK[name])
         if name in DELIMITER_COMMANDS:
-            return TextBox(DELIMITER_COMMANDS[name], self.fonts, self.size)
+            return self._math_text(DELIMITER_COMMANDS[name])
         if name in SYMBOLS:
-            return TextBox(SYMBOLS[name], self.fonts, self.size)
+            return self._math_text(SYMBOLS[name])
         if name in {"\\", ",", ";", ":", "!", " "}:
             return TextBox(" ", self.fonts, self.size // 2)
         if name in {"{", "}", "_", "%", "#", "&"}:
-            return TextBox(name, self.fonts, self.size)
+            return self._math_text(name)
         return self._parse_unknown_command(name)
 
-    def _parse_environment(self, env: str) -> Box:
+    def _read_environment_content(self, env: str) -> str | None:
+        begin_marker = f"\\begin{{{env}}}"
         end_marker = f"\\end{{{env}}}"
-        end = self.text.find(end_marker, self.pos)
-        if end < 0:
+        start = self.pos
+        depth = 0
+        i = self.pos
+        while i < len(self.text):
+            if self.text.startswith(begin_marker, i):
+                depth += 1
+                i += len(begin_marker)
+                continue
+            if self.text.startswith(end_marker, i):
+                if depth == 0:
+                    content = self.text[start:i]
+                    self.pos = i + len(end_marker)
+                    return content
+                depth -= 1
+                i += len(end_marker)
+                continue
+            i += 1
+        return None
+
+    def _parse_environment(self, env: str) -> Box:
+        content = self._read_environment_content(env)
+        if content is None:
             return TextBox(env, self.fonts, self.size)
-        content = self.text[self.pos:end]
-        self.pos = end + len(end_marker)
         if env == "array" or env in {"alignedat", "alignedat*", "alignat", "alignat*", "subarray"}:
             content = re.sub(r"^\s*\{[^{}]*\}", "", content, count=1)
         if env not in MATRIX_ENVS:
@@ -2266,7 +2688,7 @@ class LatexParser:
                 break
             marker = self.text[self.pos]
             self.pos += 1
-            script = self._parse_group(0.62)
+            script = self._parse_group(SCRIPT_SCALE, consume_scripts=False)
             if marker == "^":
                 sup = script
             else:
@@ -2322,10 +2744,23 @@ def _visible_html_image_marker(match: re.Match[str]) -> str:
     return f"[图片:{match.group(0)}]"
 
 
+def _image_source_from_line(line: str) -> str | None:
+    stripped = line.strip()
+    markdown_match = IMAGE_MD_RE.fullmatch(stripped)
+    if markdown_match:
+        return markdown_match.group(2)
+    html_match = HTML_IMAGE_SRC_RE.fullmatch(stripped)
+    if html_match:
+        return html_match.group(1)
+    return None
+
+
+PDF_PAGE_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*第\s*\d+\s*页\s*$")
+
+
 def _blocks(markdown: str) -> list[tuple[str, str]]:
     lines = normalize_math_markdown(markdown).splitlines()
     blocks: list[tuple[str, str]] = []
-    paragraph: list[str] = []
     in_math = False
     math_lines: list[str] = []
     for line in lines:
@@ -2336,26 +2771,25 @@ def _blocks(markdown: str) -> list[tuple[str, str]]:
                 math_lines = []
                 in_math = False
             else:
-                if paragraph:
-                    blocks.append(("text", " ".join(paragraph)))
-                    paragraph = []
                 in_math = True
             continue
         if in_math:
             math_lines.append(line)
             continue
+        if PDF_PAGE_HEADING_RE.match(line):
+            blocks.append(("page_break", stripped))
+            continue
         if not stripped:
-            if paragraph:
-                blocks.append(("text", " ".join(paragraph)))
-                paragraph = []
+            continue
+        image_source = _image_source_from_line(line)
+        if image_source:
+            blocks.append(("image", image_source))
             continue
         visible_line = IMAGE_MD_RE.sub(_visible_image_marker, line)
         visible_line = HTML_IMAGE_RE.sub(_visible_html_image_marker, visible_line)
-        paragraph.append(_strip_markdown_markup(visible_line))
+        blocks.append(("text", _strip_markdown_markup(visible_line)))
     if math_lines:
         blocks.append(("math", "\n".join(math_lines)))
-    if paragraph:
-        blocks.append(("text", " ".join(paragraph)))
     return blocks
 
 
@@ -2503,6 +2937,32 @@ def _split_top_level_math(expr: str, separators: set[str]) -> list[str]:
     return parts if len(parts) > 1 else [expr.strip()]
 
 
+def _math_box_width(expr: str, fonts: FontCache, size: int) -> int:
+    return latex_to_box(expr, fonts, size).width
+
+
+def _group_display_math_parts(parts: list[str], available_width: int, fonts: FontCache, size: int) -> list[str]:
+    if len(parts) <= 1:
+        return parts
+    soft_width = max(available_width, int(available_width * 1.65))
+    grouped: list[str] = []
+    current = ""
+    for part in parts:
+        candidate = f"{current}{part}" if current else part
+        if current and _math_box_width(candidate, fonts, size) > soft_width:
+            grouped.append(current)
+            current = part
+        else:
+            current = candidate
+    if current:
+        grouped.append(current)
+    if len(grouped) >= 2 and grouped[-2].rstrip().endswith("="):
+        candidate = grouped[-2] + grouped[-1]
+        if _math_box_width(candidate, fonts, size) <= soft_width:
+            grouped[-2:] = [candidate]
+    return grouped
+
+
 def _display_math_lines(expr: str, available_width: int, fonts: FontCache, size: int) -> list[str]:
     expr = normalize_latex_math(expr)
     if not expr:
@@ -2520,7 +2980,7 @@ def _display_math_lines(expr: str, available_width: int, fonts: FontCache, size:
             split = _split_top_level_math(raw, {"+", "-"})
         if len(split) == 1:
             split = _split_top_level_math(raw, {","})
-        lines.extend(split)
+        lines.extend(_group_display_math_parts(split, available_width, fonts, size))
     return lines
 
 
@@ -2550,18 +3010,45 @@ def _plain_text_to_boxes(text: str, fonts: FontCache, size: int) -> list[Box]:
     boxes: list[Box] = []
     pos = 0
     while pos < len(text):
+        decimal_match = DECIMAL_DOT_RE.search(text, pos)
         span = _raw_latex_span(text, pos)
+        next_plain_end = len(text)
+        if span:
+            next_plain_end = min(next_plain_end, span[0])
+        if decimal_match:
+            next_plain_end = min(next_plain_end, decimal_match.start())
+        if next_plain_end > pos:
+            boxes.extend(_plain_text_char_to_box(ch, fonts, size) for ch in text[pos:next_plain_end])
+            pos = next_plain_end
+            continue
+        if decimal_match and decimal_match.start() == pos:
+            boxes.append(MathTextBox(".", fonts, size))
+            pos += 1
+            continue
         if not span:
-            boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:])
+            boxes.extend(_plain_text_char_to_box(ch, fonts, size) for ch in text[pos:])
             break
         start, end = span
         if start < pos:
             start = pos
         if start > pos:
-            boxes.extend(TextBox(ch, fonts, size) for ch in text[pos:start])
+            boxes.extend(_plain_text_char_to_box(ch, fonts, size) for ch in text[pos:start])
         boxes.append(latex_to_box(text[start:end], fonts, size))
         pos = end
     return boxes
+
+
+def _plain_text_char_to_box(ch: str, fonts: FontCache, size: int) -> Box:
+    if _is_plain_text_math_char(ch):
+        return MathTextBox(ch, fonts, size)
+    return TextBox(ch, fonts, size)
+
+
+def _is_plain_text_math_char(ch: str) -> bool:
+    if ch in PLAIN_TEXT_MATH_CHARS or ch in MATH_SYMBOL_CHARS:
+        return True
+    codepoint = ord(ch)
+    return 0x0370 <= codepoint <= 0x03FF
 
 
 def markdown_render_debug_text(markdown: str, font_path: Path | None = None, size: int = 48) -> str:
@@ -2572,6 +3059,10 @@ def markdown_render_debug_text(markdown: str, font_path: Path | None = None, siz
     for kind, content in _blocks(markdown):
         if kind == "math":
             parts.append(latex_to_box(content, fonts, size).debug_text())
+        elif kind == "image":
+            parts.append("[图片]")
+        elif kind == "page_break":
+            continue
         else:
             parts.append("".join(box.debug_text() for box in _text_to_boxes(content, fonts, size)))
     return "\n".join(parts)
@@ -2689,6 +3180,10 @@ def render_markdown_handwriting(
     for index, (kind, content) in enumerate(_blocks(markdown), start=1):
         if progress_hook:
             progress_hook("rendering", f"正在处理第 {index} 段", min(90, 45 + index))
+        if kind == "page_break":
+            if baseline_y > first_line_y:
+                new_page()
+            continue
         if kind == "math":
             for math_line in _display_math_lines(content, available_width, fonts, config.font_size):
                 size = config.font_size
@@ -2709,6 +3204,15 @@ def render_markdown_handwriting(
                         draw_line(wrapped, extra_gap=config.line_spacing // 2, center=True)
                 else:
                     draw_line(box, extra_gap=config.line_spacing // 2, center=True)
+            continue
+        if kind == "image":
+            try:
+                image_box = ImageBox(content, available_width, max_line_height)
+            except ValueError:
+                fallback = HBox(_text_to_boxes(f"[图片:{content}]", fonts, config.font_size), gap=config.word_spacing)
+                draw_line(fallback, extra_gap=config.line_spacing // 2, center=True)
+            else:
+                draw_line(image_box, extra_gap=config.line_spacing // 2, center=True)
             continue
         for line in _layout_inline(_text_to_boxes(content, fonts, config.font_size), available_width, config.word_spacing, max_line_height):
             draw_line(line, allow_multi_line=not _is_plain_text_box(line))
