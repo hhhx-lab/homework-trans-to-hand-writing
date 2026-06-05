@@ -20,7 +20,7 @@
         <div class="page-face page-face-front">
           <div class="cover-content">
             <div class="cover-icon">
-              <img src="/favicon-96x96.png" alt="logo" class="cover-img" />
+              <img src="/scroll-logo.svg" alt="清卷手写工作台" class="cover-img" />
             </div>
             <div class="cover-title">手写体工作台</div>
             <div class="cover-divider"></div>
@@ -47,7 +47,7 @@
       <transition name="brand-in">
         <div v-if="showBrand" class="brand-overlay">
           <div class="brand-icon">
-            <img src="/favicon-96x96.png" alt="logo" class="brand-img" />
+            <img src="/scroll-logo.svg" alt="清卷手写工作台" class="brand-img" />
           </div>
           <div class="brand-name">手写体工作台</div>
           <div class="brand-sub">文档整理与手写导出</div>
@@ -192,7 +192,7 @@ mounted() {
   bottom: 4px;
   font-size: 15px;
   color: #868e96;
-  letter-spacing: 3px;
+  letter-spacing: 0;
   white-space: nowrap;
   font-family: 'KaiTi', 'STKaiti', 'FangSong', serif;
   line-height: 1.2;
@@ -263,8 +263,8 @@ mounted() {
 .cover-title {
   font-size: 32px;
   font-weight: 800;
-  color: #2c3e50;
-  letter-spacing: 6px;
+  color: #102a43;
+  letter-spacing: 0;
 }
 
 .cover-divider {
@@ -277,7 +277,7 @@ mounted() {
 .cover-sub {
   font-size: 14px;
   color: #6c757d;
-  letter-spacing: 2px;
+  letter-spacing: 0;
 }
 
 /* 封面左侧书脊 */
@@ -343,15 +343,15 @@ mounted() {
 .brand-name {
   font-size: 40px;
   font-weight: 800;
-  color: #2c3e50;
-  letter-spacing: 8px;
+  color: #102a43;
+  letter-spacing: 0;
   text-shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
 
 .brand-sub {
   font-size: 15px;
   color: #6c757d;
-  letter-spacing: 3px;
+  letter-spacing: 0;
 }
 
 /* ── 跳过提示 ── */
@@ -380,5 +380,61 @@ mounted() {
 .brand-in-enter-from {
   opacity: 0;
   transform: scale(0.94);
+}
+
+/* Blue-white scholarly splash refresh */
+.book-splash {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(232, 246, 255, 0.82)),
+    repeating-linear-gradient(0deg, transparent 0 36px, rgba(13, 91, 184, 0.08) 37px 38px),
+    #eef8ff;
+}
+
+.half-left {
+  background: #fbfdff;
+  border-right: 2px solid #bfdcf6;
+  box-shadow: inset -12px 0 28px rgba(9, 68, 136, 0.08);
+}
+
+.ruled-line {
+  background: #c7ddf2;
+}
+
+.handwriting-text {
+  color: #497cae;
+}
+
+.page-face-front {
+  background: linear-gradient(160deg, #ffffff 0%, #edf8ff 58%, #cfe8ff 100%);
+  box-shadow: inset -4px 0 14px rgba(11, 99, 206, 0.12);
+}
+
+.page-face-back {
+  background: #fbfdff;
+  box-shadow: inset 10px 0 24px rgba(9, 68, 136, 0.08);
+}
+
+.cover-title,
+.brand-name {
+  color: #102a43;
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  letter-spacing: 0;
+}
+
+.cover-divider {
+  background: #0b63ce;
+}
+
+.cover-sub,
+.brand-sub {
+  color: #627d98;
+}
+
+.brand-overlay {
+  background: rgba(245, 251, 255, 0.68);
+}
+
+.skip-hint {
+  color: #7c9cba;
 }
 </style>

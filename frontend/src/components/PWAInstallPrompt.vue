@@ -40,8 +40,11 @@ export default {
 
       // 保存事件，稍后使用
       this.deferredPrompt = e;
-      // 显示自定义安装提示
-      this.showInstallPrompt = true;
+      window.setTimeout(() => {
+        if (this.deferredPrompt && this.getCookie('pwa-install-dismissed') !== '1') {
+          this.showInstallPrompt = true;
+        }
+      }, 120000);
     });
 
     // 监听应用安装事件
@@ -97,14 +100,17 @@ export default {
 <style scoped>
 .pwa-install-prompt {
   position: fixed;
-  bottom: 20px;
-  left: 20px;
   right: 20px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  bottom: 20px;
+  width: min(420px, calc(100vw - 40px));
+  background: rgba(248, 252, 255, 0.96);
+  border: 1px solid rgba(145, 188, 232, 0.48);
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgba(15, 76, 145, 0.18);
+  backdrop-filter: blur(12px);
   z-index: 1000;
   animation: slideUp 0.3s ease-out;
+  box-sizing: border-box;
 }
 
 @keyframes slideUp {
@@ -121,12 +127,13 @@ export default {
 .prompt-content {
   display: flex;
   align-items: center;
-  padding: 16px;
+  padding: 14px;
   gap: 12px;
 }
 
 .prompt-icon img {
-  border-radius: 8px;
+  border-radius: 12px;
+  filter: drop-shadow(0 8px 16px rgba(11, 99, 206, 0.18));
 }
 
 .prompt-text {
@@ -136,14 +143,14 @@ export default {
 .prompt-text h3 {
   margin: 0 0 4px 0;
   font-size: 16px;
-  font-weight: 600;
-  color: #333;
+  font-weight: 800;
+  color: #102a43;
 }
 
 .prompt-text p {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: #627d98;
 }
 
 .prompt-actions {
@@ -153,36 +160,41 @@ export default {
 
 .install-btn, .dismiss-btn {
   padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid #b6d4ef;
+  border-radius: 12px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-weight: 800;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .install-btn {
-  background: #2196f3;
+  background: #0b63ce;
+  border-color: #0b63ce;
   color: white;
 }
 
 .install-btn:hover {
-  background: #1976d2;
+  background: #083b82;
 }
 
 .dismiss-btn {
-  background: #f5f5f5;
-  color: #666;
+  background: #ffffff;
+  color: #627d98;
 }
 
 .dismiss-btn:hover {
-  background: #e0e0e0;
+  border-color: #0b63ce;
+  color: #0b63ce;
+  background: #f3f9ff;
 }
 
 @media (max-width: 480px) {
   .pwa-install-prompt {
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
   }
   
   .prompt-content {

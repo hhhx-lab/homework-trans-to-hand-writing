@@ -3,8 +3,13 @@
     <section class="workspace-shell">
       <aside class="control-column">
         <header class="workspace-header">
-          <p>手写生成工作台</p>
-          <h1>上传或编辑正文，一次完成预览与导出</h1>
+          <div class="brand-lockup">
+            <img src="/scroll-logo.svg" alt="清卷手写工作台" />
+            <div>
+              <p>清卷手写工作台</p>
+              <h1>蓝笺成稿，清爽校写</h1>
+            </div>
+          </div>
         </header>
 
         <div v-if="message" class="notice notice-success">{{ message }}</div>
@@ -14,7 +19,7 @@
         <section class="panel source-panel">
           <div class="panel-heading">
             <span>正文来源</span>
-            <small>PDF / Word / Markdown / TXT</small>
+            <small>PDF / Word / MD / TXT</small>
           </div>
 
           <div
@@ -64,7 +69,7 @@
         <section class="panel settings-panel">
           <div class="panel-heading">
             <span>样式设置</span>
-            <small>保持原手写渲染效果</small>
+            <small>纸张、字体、边距</small>
           </div>
 
           <div class="settings-grid">
@@ -152,17 +157,16 @@
           <button type="button" class="secondary-action" @click="loadPreset">载入设置</button>
           <button type="button" class="secondary-action" @click="savePreset">保存设置</button>
           <button type="button" class="secondary-action" @click="resetSettings">重置</button>
-          <button type="button" class="primary-action" @click="generateHandwriting(true)" :disabled="shouldDisableButtons">
+          <button type="button" class="primary-action" @click="generateSinglePreview" :disabled="shouldDisableButtons">
             {{ isGenerating ? '生成中...' : '预览' }}
           </button>
           <button
-            v-if="isDevEnv"
             type="button"
-            class="secondary-action"
-            @click="toggleFullPreview"
+            class="secondary-action full-preview-action"
+            @click="generateFullPreview"
             :disabled="shouldDisableButtons"
           >
-            全量预览 {{ enableFullPreview ? '开' : '关' }}
+            {{ isGenerating && enableFullPreview ? '生成全量...' : '全量预览' }}
           </button>
           <button type="button" class="primary-action export" @click="generateHandwriting(false)" :disabled="shouldDisableButtons">
             {{ isGenerating ? '生成中...' : `导出 ${outputFormatLabel}` }}
@@ -173,13 +177,15 @@
       <section class="preview-column">
         <div class="preview-header">
           <div>
-            <p>预览</p>
+            <p>书页预览</p>
             <h2>{{ previewTitle }}</h2>
           </div>
-          <div v-if="previewImages.length > 1" class="page-nav">
+          <div v-if="previewImages.length > 0" class="page-nav">
+            <button type="button" @click="firstPage" :disabled="currentPreviewIndex === 0">首页</button>
             <button type="button" @click="prevPage" :disabled="currentPreviewIndex === 0">上一页</button>
             <span>{{ currentPreviewIndex + 1 }} / {{ previewImages.length }}</span>
             <button type="button" @click="nextPage" :disabled="currentPreviewIndex === previewImages.length - 1">下一页</button>
+            <button type="button" @click="lastPage" :disabled="currentPreviewIndex === previewImages.length - 1">末页</button>
           </div>
         </div>
 
@@ -196,7 +202,7 @@
 
     <footer class="workspace-footer">
       <span>个人私有工具</span>
-      <span>本地优先，按需部署</span>
+      <span>蓝白纸页风格</span>
     </footer>
   </main>
 </template>
@@ -273,7 +279,7 @@ export default {
       isUnderlined: true,
       enableEnglishSpacing: false,
       outputFormat: 'pdf',
-      previewImage: '/default1.webp',
+      previewImage: '/scholar-preview.svg',
       previewImages: [],
       currentPreviewIndex: 0,
       message: '',
@@ -302,9 +308,6 @@ export default {
     },
     shouldDisableButtons() {
       return this.isGenerating || this.isInCooldownPeriod || this.queueFullCountdown > 0 || this.isExtractingSource;
-    },
-    isDevEnv() {
-      return process.env.NODE_ENV === 'development';
     },
     outputFormatLabel() {
       return this.outputFormat === 'docx' ? 'Word' : 'PDF';
@@ -501,7 +504,7 @@ export default {
     clearImage() {
       this.backgroundImage = null;
       this.selectedImageFileName = '';
-      this.previewImage = '/default1.webp';
+      this.previewImage = '/scholar-preview.svg';
       if (this.$refs.imageFileInput) {
         this.$refs.imageFileInput.value = null;
       }
@@ -628,9 +631,17 @@ export default {
       formData.append('content_format', this.activeContentFormat());
       formData.append('isUnderlined', this.isUnderlined.toString());
       formData.append('enableEnglishSpacing', this.enableEnglishSpacing.toString());
-      const allowFullPreview = this.isDevEnv && this.enableFullPreview && preview;
+      const allowFullPreview = this.enableFullPreview && preview;
       formData.append('full_preview', allowFullPreview.toString());
       return { formData, allowFullPreview };
+    },
+    generateSinglePreview() {
+      this.enableFullPreview = false;
+      return this.generateHandwriting(true);
+    },
+    generateFullPreview() {
+      this.enableFullPreview = true;
+      return this.generateHandwriting(true);
     },
     async generateHandwriting(preview = false) {
       if (this.isGenerating) {
@@ -650,7 +661,9 @@ export default {
       this.startCooldownTimer();
       this.message = '';
       this.errorMessage = '';
-      this.uploadMessage = preview ? '正在生成预览...' : `正在导出 ${this.outputFormatLabel}...`;
+      this.uploadMessage = preview
+        ? (this.enableFullPreview ? '正在生成全量预览...' : '正在生成预览...')
+        : `正在导出 ${this.outputFormatLabel}...`;
 
       try {
         const { formData, allowFullPreview } = this.buildGenerationFormData(preview);
@@ -672,7 +685,7 @@ export default {
           responseType: preview ? (allowFullPreview ? 'json' : 'blob') : 'blob',
           withCredentials: true,
         });
-        this.handleGenerationResultResponse(resultResponse, preview);
+        await this.handleGenerationResultResponse(resultResponse, preview);
       } catch (error) {
         await this.handleGenerationError(error);
       } finally {
@@ -779,13 +792,19 @@ export default {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     },
-    handleGenerationResultResponse(response, preview) {
+    async handleGenerationResultResponse(response, preview) {
       const contentType = response.headers['content-type'] || '';
-      if (contentType.includes('application/json') && response.data?.status === 'success') {
-        this.previewImages = response.data.images.map((img) => `data:image/png;base64,${img}`);
+      let jsonData = response.data;
+      if (contentType.includes('application/json') && response.data instanceof Blob) {
+        jsonData = JSON.parse(await response.data.text());
+      }
+      if (contentType.includes('application/json') && Array.isArray(jsonData?.images)) {
+        this.previewImages = jsonData.images.map((img) => (String(img).startsWith('data:') ? img : `data:image/png;base64,${img}`));
         this.currentPreviewIndex = 0;
         this.previewImage = this.previewImages[0] || this.previewImage;
-        this.message = '预览已生成';
+        this.message = this.previewImages.length > 1
+          ? `全量预览已生成，共 ${this.previewImages.length} 页`
+          : '预览已生成，仅 1 页';
         this.uploadMessage = '';
         return;
       }
@@ -794,7 +813,7 @@ export default {
         this.previewImages = [blobUrl];
         this.currentPreviewIndex = 0;
         this.previewImage = blobUrl;
-        this.message = '预览已生成';
+        this.message = '单页预览已生成';
         this.uploadMessage = '';
         return;
       }
@@ -867,8 +886,11 @@ export default {
     nextPage() {
       if (this.currentPreviewIndex < this.previewImages.length - 1) this.currentPreviewIndex += 1;
     },
-    toggleFullPreview() {
-      this.enableFullPreview = !this.enableFullPreview;
+    firstPage() {
+      this.currentPreviewIndex = 0;
+    },
+    lastPage() {
+      if (this.previewImages.length > 0) this.currentPreviewIndex = this.previewImages.length - 1;
     },
     savePreset() {
       const data = {};
@@ -929,7 +951,7 @@ export default {
       this.selectedFontFileName = '';
       this.selectedImageFileName = '';
       this.selectedOption = '1';
-      this.previewImage = '/default1.webp';
+      this.previewImage = '/scholar-preview.svg';
       this.previewImages = [];
       this.currentPreviewIndex = 0;
       this.message = '设置已重置';
@@ -954,7 +976,7 @@ export default {
 
 .workspace-shell {
   display: grid;
-  grid-template-columns: minmax(360px, 560px) minmax(420px, 1fr);
+  grid-template-columns: minmax(340px, 520px) minmax(360px, 1fr);
   gap: 24px;
   max-width: 1580px;
   margin: 0 auto;
@@ -962,6 +984,7 @@ export default {
 
 .control-column,
 .preview-column {
+  width: 100%;
   min-width: 0;
 }
 
@@ -1301,7 +1324,7 @@ button:disabled {
   font-weight: 700;
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 860px) {
   .workspace-shell {
     grid-template-columns: 1fr;
   }
@@ -1324,6 +1347,506 @@ button:disabled {
   .paper-preview {
     min-height: 420px;
     padding: 10px;
+  }
+}
+
+/* Blue-white scholarly redesign */
+.handwriting-workspace {
+  --ink: #102a43;
+  --muted: #627d98;
+  --line: #c8dcf1;
+  --line-strong: #91bce8;
+  --paper: #ffffff;
+  --paper-blue: #f3f9ff;
+  --wash: #eaf5ff;
+  --primary: #0b63ce;
+  --primary-deep: #083b82;
+  --accent: #c68b2f;
+  min-height: 100vh;
+  height: 100vh;
+  padding: 28px;
+  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(236, 247, 255, 0.82)),
+    repeating-linear-gradient(0deg, transparent 0 37px, rgba(69, 130, 190, 0.08) 38px 39px),
+    linear-gradient(120deg, #f8fcff 0%, #e8f4ff 52%, #f6fbff 100%);
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.handwriting-workspace *,
+.handwriting-workspace *::before,
+.handwriting-workspace *::after {
+  box-sizing: border-box;
+}
+
+.workspace-shell {
+  width: min(100%, 1640px);
+  grid-template-columns: minmax(340px, 500px) minmax(360px, 1fr);
+  gap: 24px;
+  max-width: 1640px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: start;
+}
+
+.control-column,
+.preview-column {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.control-column {
+  padding-right: 6px;
+}
+
+.workspace-header {
+  margin: 6px 0 18px;
+  padding: 8px 6px 0;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+}
+
+.brand-lockup img {
+  width: 74px;
+  height: 74px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 12px 22px rgba(8, 59, 130, 0.18));
+}
+
+.workspace-header p,
+.preview-header p {
+  margin: 0 0 6px;
+  color: var(--primary);
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.workspace-header h1,
+.preview-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  font-size: clamp(2rem, 3vw, 2.65rem);
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.preview-header h2 {
+  font-size: clamp(1.65rem, 2.8vw, 2.6rem);
+}
+
+.panel,
+.actions-panel,
+.preview-column {
+  border: 1px solid rgba(93, 145, 196, 0.22);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 250, 255, 0.94));
+  box-shadow: 0 22px 46px rgba(21, 75, 128, 0.11);
+}
+
+.panel {
+  position: relative;
+  margin-bottom: 16px;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: linear-gradient(180deg, var(--primary), #8cc5ff);
+  opacity: 0.85;
+}
+
+.panel-heading,
+.preview-header {
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.panel-heading span {
+  color: var(--ink);
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.panel-heading small {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.notice {
+  border-radius: 14px;
+  padding: 11px 14px;
+  text-align: left;
+}
+
+.notice-success {
+  background: #edf9f1;
+  color: #1f6b3a;
+  border-color: #bde5ca;
+}
+
+.notice-info {
+  background: #edf7ff;
+  color: #0b4c99;
+  border-color: #badbf8;
+}
+
+.notice-error {
+  background: #fff3f0;
+  color: #9b2c20;
+  border-color: #efc5bc;
+}
+
+.source-upload-target {
+  min-height: 112px;
+}
+
+.drop-zone {
+  min-height: 112px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(237, 247, 255, 0.96)),
+    repeating-linear-gradient(0deg, transparent 0 27px, rgba(13, 91, 184, 0.08) 28px 29px);
+  color: var(--ink);
+  gap: 10px;
+}
+
+.drop-zone::before {
+  content: "";
+  width: 42px;
+  height: 42px;
+  margin-bottom: 2px;
+  border: 2px solid #0b63ce;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, transparent 0 58%, #d7ecff 58% 100%),
+    repeating-linear-gradient(0deg, transparent 0 10px, rgba(11, 99, 206, 0.22) 11px 12px),
+    #ffffff;
+  box-shadow: inset -8px 0 0 #d7ecff;
+  opacity: 0.9;
+}
+
+.drop-zone strong {
+  max-width: 94%;
+  color: var(--ink);
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.drop-zone span {
+  color: var(--muted);
+}
+
+.source-upload-target:hover:not(.disabled) .drop-zone,
+.source-upload-target:focus-within:not(.disabled) .drop-zone {
+  border-color: var(--primary);
+  background-color: #f4fbff;
+  transform: translateY(-2px);
+  box-shadow: inset 0 0 0 1px rgba(11, 99, 206, 0.08);
+}
+
+.text-editor {
+  min-height: 286px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: #17324d;
+  background:
+    linear-gradient(90deg, rgba(11, 99, 206, 0.08) 0 2px, transparent 2px 100%),
+    repeating-linear-gradient(0deg, #ffffff 0 34px, #d9eafa 35px 36px);
+  background-position: 18px 0, 0 0;
+  padding: 18px 18px 18px 28px;
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+  font-size: 1rem;
+  line-height: 1.8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.text-editor:focus,
+.settings-grid input:focus,
+.settings-grid select:focus {
+  border-color: var(--primary);
+  outline: 3px solid rgba(11, 99, 206, 0.12);
+}
+
+.source-meta {
+  color: var(--muted);
+}
+
+.source-meta span,
+.asset-row span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.source-meta button,
+.link-button,
+.source-actions button {
+  color: var(--primary);
+}
+
+.source-actions button,
+.asset-row button,
+.secondary-action,
+.primary-action,
+.page-nav button {
+  min-height: 42px;
+  border: 1px solid #b6d4ef;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #174c83;
+  padding: 9px 15px;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(20, 77, 132, 0.08);
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-nav button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+}
+
+.source-actions button:hover:not(:disabled),
+.asset-row button:hover:not(:disabled),
+.secondary-action:hover:not(:disabled),
+.page-nav button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #f4fbff;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(20, 77, 132, 0.12);
+}
+
+.settings-grid {
+  gap: 13px;
+}
+
+.settings-grid.compact {
+  gap: 12px;
+}
+
+label {
+  color: #294b68;
+  text-align: left;
+}
+
+.settings-grid input,
+.settings-grid select {
+  min-height: 44px;
+  border-color: var(--line);
+  border-radius: 12px;
+  background: #fbfdff;
+  color: var(--ink);
+}
+
+.asset-row {
+  padding: 11px 12px;
+  border: 1px solid rgba(145, 188, 232, 0.38);
+  border-radius: 14px;
+  background: rgba(244, 250, 255, 0.72);
+  color: var(--muted);
+}
+
+.toggle-row {
+  gap: 12px;
+}
+
+.toggle-row label {
+  flex: 1 1 200px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(145, 188, 232, 0.45);
+  border-radius: 14px;
+  background: #fbfdff;
+}
+
+.toggle-row input {
+  accent-color: var(--primary);
+}
+
+.advanced-settings {
+  border-top-color: rgba(145, 188, 232, 0.45);
+}
+
+.advanced-settings summary {
+  color: var(--primary);
+  text-align: left;
+}
+
+.actions-panel {
+  position: sticky;
+  bottom: 16px;
+  z-index: 3;
+  padding: 14px;
+  background: rgba(247, 252, 255, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.primary-action {
+  border-color: var(--primary);
+  background: linear-gradient(180deg, #1478ec, var(--primary));
+  color: #ffffff;
+}
+
+.primary-action.export {
+  flex: 1 1 168px;
+  border-color: var(--primary-deep);
+  background: linear-gradient(180deg, #0d53aa, var(--primary-deep));
+}
+
+.full-preview-action {
+  color: var(--primary-deep);
+  background: #f4fbff;
+}
+
+.primary-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(11, 99, 206, 0.22);
+}
+
+.preview-column {
+  position: relative;
+  top: auto;
+  align-self: stretch;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(234, 245, 255, 0.94));
+}
+
+.preview-header {
+  position: sticky;
+  top: -24px;
+  z-index: 4;
+  padding: 2px 4px 12px;
+  border-bottom: 1px solid rgba(145, 188, 232, 0.35);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 250, 255, 0.96));
+  backdrop-filter: blur(10px);
+}
+
+.paper-preview {
+  min-height: calc(100vh - 190px);
+  border: 1px solid rgba(145, 188, 232, 0.42);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #f8fcff, #eaf5ff),
+    repeating-linear-gradient(0deg, transparent 0 34px, rgba(13, 91, 184, 0.08) 35px 36px);
+  padding: 28px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.76);
+}
+
+.paper-preview img {
+  width: min(100%, 780px);
+  border: 1px solid rgba(145, 188, 232, 0.48);
+  border-radius: 12px;
+  box-shadow: 0 24px 46px rgba(15, 76, 145, 0.18);
+  background: #ffffff;
+}
+
+.page-nav span {
+  color: var(--primary-deep);
+}
+
+.workspace-footer {
+  display: none;
+  flex: 0 0 auto;
+  margin-top: 10px;
+  color: var(--muted);
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", serif;
+}
+
+@media (max-width: 860px) {
+  .workspace-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .actions-panel,
+  .preview-column {
+    position: static;
+  }
+
+  .handwriting-workspace {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .workspace-shell {
+    min-height: 0;
+  }
+
+  .control-column,
+  .preview-column {
+    height: auto;
+    overflow: visible;
+  }
+
+  .preview-header {
+    position: static;
+  }
+
+  .paper-preview {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 680px) {
+  .handwriting-workspace {
+    padding: 16px;
+  }
+
+  .brand-lockup {
+    align-items: flex-start;
+  }
+
+  .brand-lockup img {
+    width: 58px;
+    height: 58px;
+  }
+
+  .workspace-header h1 {
+    font-size: 1.78rem;
+    line-height: 1.16;
+    overflow-wrap: anywhere;
+  }
+
+  .panel,
+  .preview-column {
+    padding: 16px;
+  }
+
+  .paper-preview {
+    min-height: 360px;
+    padding: 12px;
   }
 }
 </style>

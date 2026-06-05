@@ -2256,6 +2256,25 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         self.assertEqual(config["public_base_url"], "http://100.64.0.1:5005")
         self.assertEqual(config["model_version"], "vlm")
 
+    def test_mineru_urlopen_can_bind_tailscale_source_address(self):
+        opener = mock.Mock()
+        opener.open.return_value = object()
+        with mock.patch.dict(
+            os.environ,
+            {"MINERU_TRUST_ENV": "0", "MINERU_BIND_HOST": "100.64.0.1"},
+            clear=True,
+        ), mock.patch("mineru_adapter.urllib.request.build_opener", return_value=opener) as build_opener:
+            mineru_adapter._urlopen("http://100.64.0.2:8100/docs", timeout=3)
+
+        handler_names = [handler.__class__.__name__ for handler in build_opener.call_args.args]
+        self.assertIn("_BoundHTTPHandler", handler_names)
+        self.assertIn("_BoundHTTPSHandler", handler_names)
+        bound_handler = next(
+            handler for handler in build_opener.call_args.args if handler.__class__.__name__ == "_BoundHTTPHandler"
+        )
+        self.assertEqual(bound_handler._source_address, ("100.64.0.1", 0))
+        opener.open.assert_called_once_with("http://100.64.0.2:8100/docs", timeout=3)
+
     def test_pdf_without_mineru_config_has_readable_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             pdf = Path(tmp) / "source.pdf"

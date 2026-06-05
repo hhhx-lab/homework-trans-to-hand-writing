@@ -51,12 +51,12 @@ export default {
         { property: 'og:url', content: canonical.value },
         { property: 'og:title', content: title.value },
         { property: 'og:description', content: description.value },
-        { property: 'og:image', content: '/default1.webp' },
+        { property: 'og:image', content: '/scholar-preview.svg' },
         { property: 'twitter:card', content: 'summary_large_image' },
         { property: 'twitter:url', content: canonical.value },
         { property: 'twitter:title', content: title.value },
         { property: 'twitter:description', content: description.value },
-        { property: 'twitter:image', content: '/default1.webp' },
+        { property: 'twitter:image', content: '/scholar-preview.svg' },
       ],
       link: [
         { rel: 'canonical', href: canonical.value },
@@ -70,11 +70,11 @@ export default {
 
 <style>
 #app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Songti SC", "STSong", "Noto Serif CJK SC", "PingFang SC", serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
-  color: #2c3e50;
+  color: #102a43;
 }
 
 nav {
@@ -83,20 +83,18 @@ nav {
 
 nav a {
   font-weight: bold;
-  color: #2c3e50;
+  color: #102a43;
 }
 
 nav a.router-link-exact-active {
-  color: #42b983;
+  color: #0b63ce;
 }
 button {
-  transition: all 0.3s ease;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 button:hover {
   cursor: pointer;
-  transform: scale(1.1);
-  box-shadow: 0px 0px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* 文字不换行，溢出变为省略号 */

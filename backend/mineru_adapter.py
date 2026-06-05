@@ -4,6 +4,7 @@ import io
 import json
 import base64
 import html
+import http.client
 import mimetypes
 import os
 import posixpath
@@ -91,10 +92,37 @@ def _trust_env() -> bool:
     return value not in {"0", "false", "no", "off"}
 
 
+def _bind_host() -> str:
+    return os.getenv("MINERU_BIND_HOST", "").strip()
+
+
+class _BoundHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, source_address: tuple[str, int]):
+        super().__init__()
+        self._source_address = source_address
+
+    def http_open(self, req):
+        return self.do_open(http.client.HTTPConnection, req, source_address=self._source_address)
+
+
+class _BoundHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, source_address: tuple[str, int]):
+        super().__init__()
+        self._source_address = source_address
+
+    def https_open(self, req):
+        return self.do_open(http.client.HTTPSConnection, req, source_address=self._source_address)
+
+
 def _urlopen(request: urllib.request.Request | str, timeout: int):
-    if _trust_env():
+    bind_host = _bind_host()
+    if _trust_env() and not bind_host:
         return urllib.request.urlopen(request, timeout=timeout)
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    handlers: list[urllib.request.BaseHandler] = [urllib.request.ProxyHandler({})]
+    if bind_host:
+        source_address = (bind_host, 0)
+        handlers.extend([_BoundHTTPHandler(source_address), _BoundHTTPSHandler(source_address)])
+    opener = urllib.request.build_opener(*handlers)
     return opener.open(request, timeout=timeout)
 
 

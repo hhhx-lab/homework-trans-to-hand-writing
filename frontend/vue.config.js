@@ -1,5 +1,4 @@
 const { defineConfig } = require("@vue/cli-service");
-const path = require("path");
 
 module.exports = defineConfig({
   transpileDependencies: true,
@@ -64,29 +63,10 @@ module.exports = defineConfig({
       },
     },
   },
-  chainWebpack: (config) => {
-    config.plugin("copy").tap((args) => {
-      const options = args[0] || {};
-      const patterns = options.patterns || [];
-      patterns.forEach((pattern) => {
-        if (pattern.from && path.basename(pattern.from) === "public") {
-          pattern.globOptions = pattern.globOptions || {};
-          pattern.globOptions.ignore = [
-            ...(pattern.globOptions.ignore || []),
-            "**/default.png",
-            "**/default1.png",
-            "**/writing.png",
-            "**/favicon.svg",
-          ];
-        }
-      });
-      return args;
-    });
-  },
   pwa: {
     name: "作业文档转手写体工作台",
-    themeColor: "#4fc08d",
-    msTileColor: "#000000",
+    themeColor: "#0b63ce",
+    msTileColor: "#0b63ce",
     iconPaths: {
       faviconSVG: "icon.svg",
       favicon32: "favicon-96x96.png",
@@ -99,7 +79,6 @@ module.exports = defineConfig({
     workboxOptions: {
       skipWaiting: true,
       clientsClaim: true,
-      exclude: [/default\.png$/, /default1\.png$/, /writing\.png$/, /favicon\.svg$/],
       runtimeCaching: [
         // StaleWhileRevalidate - 返回缓存同时更新（适用于静态资源）
         {
