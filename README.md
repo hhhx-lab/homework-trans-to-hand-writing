@@ -78,6 +78,26 @@ http://localhost:8080
 http://127.0.0.1:5005
 ```
 
+也可以直接在项目根目录一键启动前后端：
+
+```bash
+./start-dev.sh
+```
+
+脚本会创建或重启 `tmux` 会话 `handwriting-web`，后端窗口运行 `backend/app.py`，前端窗口运行 `npm run serve`。
+
+查看运行日志：
+
+```bash
+tmux attach -t handwriting-web
+```
+
+停止本项目的前后端：
+
+```bash
+./start-dev.sh --stop
+```
+
 ## PDF 抽取配置
 
 如果要使用 MinerU 抽取 PDF，需要在项目 `.env` 中配置：

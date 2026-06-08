@@ -19,6 +19,7 @@ from docx import Document
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mineru_adapter
+from handwriting_document import plainify_latex_text
 from handwriting_markdown_renderer import (
     FontCache,
     HandwritingRenderConfig,
@@ -1513,6 +1514,39 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
         for token in ("F", "c", "≡", "mod", "n", "⊥", "∥", "∠", "ABC", "∴", "≠", "∵", "≤", ":", "∉", "B", "‖v‖"):
             self.assertIn(token, debug_text)
 
+    def test_internal_tex_group_controls_are_not_rendered_as_text(self):
+        expr = r"B\bgroup(5)\aftergroup\egroup-B\bgroup(4)\aftergroup\egroup"
+        debug_text = latex_to_debug_text(expr, FONT_PATH)
+        normalized = normalize_math_markdown(f"又 ${expr}$ 与 $B\\bgroup(3)\\aftergroup\\egroup$ 后独立。")
+        markdown_debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+
+        self.assertIn("B(5)-B(4)", debug_text)
+        self.assertIn("B(5)-B(4)", markdown_debug_text)
+        self.assertIn("B(3)", markdown_debug_text)
+        self.assertNotRegex(debug_text + markdown_debug_text + normalized, r"bgroup|egroup|aftergroup|operatorname")
+
+    def test_internal_tex_controls_are_globally_forbidden_in_final_text(self):
+        forbidden = r"bgroup|egroup|begingroup|endgroup|aftergroup|relax|protect|noexpand|expandafter|csname|endcsname"
+        samples = (
+            r"B\bgroup(5)\aftergroup\egroup-B\bgroup(4)\aftergroup\egroup",
+            r"C\begingroup(2)\endgroup+\operatorname{bgroup}+x+\mathrm{egroup}+\text{aftergroup}",
+            r"x\relax+\protect y+\noexpand z+\expandafter w+\csname hidden\endcsname",
+        )
+
+        for expr in samples:
+            with self.subTest(expr=expr):
+                normalized = normalize_math_markdown(f"检查 ${expr}$ 结束。")
+                debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+                fallback_text = plainify_latex_text(expr)
+
+                self.assertNotRegex(normalized, forbidden)
+                self.assertNotRegex(debug_text, forbidden)
+                self.assertNotRegex(fallback_text, forbidden)
+                self.assertNotIn("\\", debug_text)
+
+        self.assertIn("B(5)-B(4)", markdown_render_debug_text(normalize_math_markdown(f"${samples[0]}$"), FONT_PATH))
+        self.assertEqual("This is the read write def text.", plainify_latex_text("This is the read write def text."))
+
     def test_norm_delimiter_commands_render_as_double_bars(self):
         debug_text = latex_to_debug_text(r"\lVert v\rVert+\Vert x\Vert", FONT_PATH)
         self.assertNotRegex(debug_text, r"lVert|rVert|\\")
@@ -2000,6 +2034,45 @@ class UnifiedHandwritingPipelineTests(unittest.TestCase):
                     self.assertNotIn(token, repaired)
                 else:
                     self.assertIn(token, repaired)
+
+    def test_mineru_repair_restores_malformed_ode_matrix_block(self):
+        markdown = (
+            "题 2(2)：将下面的初值问题化为与之等价的一阶微分方程组的初值问题：\n\n"
+            "$$x^{(4)} + x = t e^{t}$$\n\n"
+            "其矩阵形式为：\n\n"
+            "$$x^{\\prime} = A x + f (t)$$\n\n"
+            "其中， $\\begin{array}{c} \\begin{array}{c} \\begin{array} {r} "
+            "{ \\boldsymbol {x} = | \\begin{array} {l} { \\mathrm {x}_{1} } \\\\ "
+            "{ \\mathrm {x}_{2} } \\\\ { \\mathrm {x}_{3} } \\\\ { \\mathrm {x}_{4} } "
+            "\\end{array} |_{ \\begin{array} {l} "
+            "{ A = \\mathrm {~ ( ~ 0 ~ 0 ~ 1 ~ 0 ~ 0 ~ ) ~} } \\\\ {0} \\\\ {0} "
+            "\\end{array} } , } \\\\ { \\mathrm {x}_{4} } \\end{array} { } f ( t ) = | "
+            "\\begin{array} {l} { \\mathrm {~ ( ~ 0 ~ 0 ~ 1 ~ 0 ~ 0 ~ 0 ~ ) ~} } \\\\ "
+            "{ \\mathrm {~ ( ~ 0 ~ 0 ~ 1 ~ 0 ~ 0 ~ ) ~} } \\\\ {0} \\\\ {0} "
+            "\\end{array} |_{ \\begin{array} {l} "
+            "{ \\mathrm {~ ( f ) = ~ ( ~ 0 ~ 0 ~ 1 ~ 0 ~ 0 ~ 0 ~ ) ~} } \\\\ {0} \\\\ {0} \\\\ "
+            "{ \\mathrm {~ ( ~ - 1 ~ 0 ~ 0 ~ 0 ~ 0 ~ 0 ~ ) ~} } \\end{array} } "
+            "\\end{array} |_{ \\begin{array} {l} "
+            "{ \\mathrm {~ f ( t ) = ( ~ 0 ~ 0 ~ 1 ~ 0 ~ 0 ~ 0 ~ 0 ~ ) ~} } \\\\ {0} \\\\ {0} \\\\ "
+            "{ \\mathrm { ~ t ~ e^{t} ~ } } \\end{array} } . \\end{array}$\n\n"
+            "相应的初始条件为： $x ( 0 ) = { \\left| \\begin{array} {l} "
+            "{1} \\\\ {- 1} \\\\ {2} \\\\ {0} \\end{array} \\right| }_{0}^{ }$\n\n"
+            "题 5：考虑方程组"
+        )
+
+        repaired = repair_extracted_markdown_text(markdown)
+        normalized = normalize_math_markdown(repaired)
+        debug_text = markdown_render_debug_text(normalized, FONT_PATH)
+
+        self.assertIn(r"\begin{pmatrix} x_1 \\ x_2 \\ x_3 \\ x_4 \end{pmatrix}", normalized)
+        self.assertIn(r"\begin{pmatrix} 0 & 1 & 0 & 0", normalized)
+        self.assertIn(r"\begin{pmatrix} 0 \\ 0 \\ 0 \\ t e^t \end{pmatrix}", normalized)
+        self.assertIn(r"x(0)=\begin{pmatrix} 1 \\ -1 \\ 2 \\ 0 \end{pmatrix}", normalized)
+        self.assertIn("x=[[x_1];[x_2];[x_3];[x_4]]", debug_text)
+        self.assertIn("A=[[0,1,0,0];[0,0,1,0];[0,0,0,1];[-1,0,0,0]]", debug_text)
+        self.assertIn("f(t)=[[0];[0];[0];[te^t]]", debug_text)
+        self.assertIn("x(0)=[[1];[-1];[2];[0]]", debug_text)
+        self.assertNotRegex(debug_text, r"001000|f\s*\)\s*=|array|boldsymbol")
 
     def test_random_process_pdf_extraction_restores_key_body_text_when_available(self):
         sample_pdf = Path(__file__).resolve().parents[3] / "随机过程三次作业答案.pdf"

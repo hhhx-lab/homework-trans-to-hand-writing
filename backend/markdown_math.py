@@ -683,6 +683,95 @@ PLAIN_TEX_MATRIX_COMMANDS = {
 }
 PLAIN_TEX_MATRIX_COMMAND_RE = re.compile(r"\\(" + "|".join(PLAIN_TEX_MATRIX_COMMANDS) + r")(?![A-Za-z])")
 UNKNOWN_LATEX_COMMAND_RE = re.compile(r"(?<!\\)\\([A-Za-z]+)(?![A-Za-z])")
+FORBIDDEN_TEX_INTERNAL_WORDS = frozenset(
+    {
+        "bgroup",
+        "egroup",
+        "begingroup",
+        "endgroup",
+        "aftergroup",
+        "relax",
+        "protect",
+        "noexpand",
+        "expandafter",
+        "futurelet",
+        "csname",
+        "endcsname",
+        "let",
+        "def",
+        "gdef",
+        "edef",
+        "xdef",
+        "global",
+        "the",
+        "catcode",
+        "chardef",
+        "mathchar",
+        "mathchoice",
+        "mathpalette",
+        "mkern",
+        "mskip",
+        "muskip",
+        "penalty",
+        "kern",
+        "hskip",
+        "vskip",
+        "shipout",
+        "write",
+        "read",
+        "input",
+        "uppercase",
+        "lowercase",
+    }
+)
+FORBIDDEN_VISIBLE_TEX_INTERNAL_WORDS = frozenset(
+    {
+        "bgroup",
+        "egroup",
+        "begingroup",
+        "endgroup",
+        "aftergroup",
+        "relax",
+        "protect",
+        "noexpand",
+        "expandafter",
+        "futurelet",
+        "csname",
+        "endcsname",
+        "mathpalette",
+        "mathchoice",
+        "mathchar",
+        "mkern",
+        "mskip",
+        "muskip",
+    }
+)
+_FORBIDDEN_TEX_INTERNAL_PATTERN = "|".join(sorted(FORBIDDEN_TEX_INTERNAL_WORDS, key=len, reverse=True))
+_FORBIDDEN_VISIBLE_TEX_INTERNAL_PATTERN = "|".join(
+    sorted(FORBIDDEN_VISIBLE_TEX_INTERNAL_WORDS, key=len, reverse=True)
+)
+INTERNAL_TEX_CONTROL_WORD_RE = re.compile(rf"\\(?:{_FORBIDDEN_TEX_INTERNAL_PATTERN})(?![A-Za-z])\s*")
+INTERNAL_TEX_OPERATOR_TEXT_RE = re.compile(
+    rf"\\(?:operatorname\*?|mathrm|text|textrm|textnormal|mathbf|mathit|mathsf|mathtt)"
+    rf"\s*\{{\s*(?:{_FORBIDDEN_VISIBLE_TEX_INTERNAL_PATTERN})\s*\}}",
+    re.I,
+)
+VISIBLE_TEX_INTERNAL_WORD_RE = re.compile(rf"\b(?:{_FORBIDDEN_VISIBLE_TEX_INTERNAL_PATTERN})\b", re.I)
+
+
+def strip_internal_tex_control_words(text: str) -> str:
+    """Remove TeX grouping internals that must never become visible content."""
+
+    previous = None
+    while previous != text:
+        previous = text
+        text = INTERNAL_TEX_OPERATOR_TEXT_RE.sub("", text)
+        text = INTERNAL_TEX_CONTROL_WORD_RE.sub("", text)
+    return text
+
+
+def contains_forbidden_tex_internal_text(text: str) -> bool:
+    return bool(VISIBLE_TEX_INTERNAL_WORD_RE.search(text or ""))
 
 
 def _read_balanced_brace_group(text: str, pos: int) -> tuple[str, int] | None:
@@ -985,6 +1074,7 @@ def _looks_like_display_math(text: str) -> bool:
 
 def normalize_latex_math(expr: str) -> str:
     expr = expr.replace("\r\n", "\n").replace("\r", "\n")
+    expr = strip_internal_tex_control_words(expr)
     expr = STYLE_COMMAND_RE.sub("", expr)
     protected_text_groups: list[str] = []
 
@@ -1183,6 +1273,7 @@ def _flush_paragraph(result: list[str], paragraph: list[str]) -> None:
 def normalize_math_markdown(markdown: str) -> str:
     markdown = FRONT_MATTER_RE.sub("", html.unescape(markdown or ""))
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
+    markdown = strip_internal_tex_control_words(markdown)
     markdown = DISPLAY_BRACKET_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)
     markdown = DISPLAY_DOLLAR_RE.sub(lambda m: f"\n\n$$\n{normalize_latex_math(m.group(1))}\n$$\n\n", markdown)
 

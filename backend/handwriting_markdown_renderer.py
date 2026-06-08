@@ -1739,7 +1739,7 @@ class MatrixBox(Box):
     def __init__(self, rows: list[list[Box]], env: str, size: int, fonts: FontCache):
         self.rows = rows
         self.env = env
-        self.pad = max(8, size // 8)
+        self.pad = max(10, int(size * 0.28))
         columns = max((len(row) for row in rows), default=0)
         self.col_widths = [
             max((row[i].width for row in rows if i < len(row)), default=size // 2)

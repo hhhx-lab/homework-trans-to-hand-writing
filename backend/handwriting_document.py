@@ -15,7 +15,12 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
-from markdown_math import LATEX_RESIDUAL_RE, normalize_math_markdown
+from markdown_math import (
+    LATEX_RESIDUAL_RE,
+    contains_forbidden_tex_internal_text,
+    normalize_math_markdown,
+    strip_internal_tex_control_words,
+)
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -150,9 +155,16 @@ def plainify_latex_text(text: str) -> str:
     commands from the final document.
     """
 
-    if not LATEX_RESIDUAL_RE.search(text):
+    if not LATEX_RESIDUAL_RE.search(text) and not contains_forbidden_tex_internal_text(text):
         return text
     text = text.replace("$", "")
+    text = strip_internal_tex_control_words(text)
+    text = re.sub(
+        r"\b(?:bgroup|egroup|begingroup|endgroup|aftergroup|relax|protect|noexpand|expandafter|futurelet|csname|endcsname)\b",
+        "",
+        text,
+        flags=re.I,
+    )
     text = text.replace("\\cfrac", "\\frac").replace("\\dfrac", "\\frac").replace("\\tfrac", "\\frac")
     text = _replace_simple_frac(text)
     text = re.sub(

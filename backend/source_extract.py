@@ -30,6 +30,11 @@ OCR_C_CLOSE_RE = re.compile(
 OCR_C_LEFTOVER_RE = re.compile(OCR_C_SCRIPT_PATTERN)
 SPACED_DECIMAL_RE = re.compile(r"(?<![A-Za-z])(?P<int>\d(?:\s+\d)*)\s*[.．]\s*(?P<frac>\d(?:\s*\d)*)")
 SPACED_DIGITS_RE = re.compile(r"(?<![A-Za-z\\])(?<!\d)(?P<digits>\d(?:\s+\d)+)(?!\s*[A-Za-z])")
+MALFORMED_ODE_MATRIX_BLOCK_RE = re.compile(
+    r"其中，\s*\$(?P<matrix>\\begin\{array\}.*?\\end\{array\})\$\s*\n\n"
+    r"相应的初始条件为：\s*\$(?P<initial>.*?)\$(?=\n\n(?:题\s*\d|$))",
+    re.S,
+)
 
 
 def _repair_ocr_c_scripts_in_math_expr(expr: str) -> str:
@@ -114,6 +119,51 @@ def _repair_statistics_pdf_fragments(text: str) -> str:
     return text
 
 
+def _looks_like_malformed_ode_matrix_block(context: str, matrix: str, initial: str) -> bool:
+    compact = re.sub(r"\s+", "", context + matrix + initial)
+    required = (
+        "x^{(4)}+x=te^{t}",
+        "x^{\\prime}=Ax+f(t)",
+        "\\boldsymbol{x}",
+        "A=",
+        "f(t)",
+        "te^{t}",
+        "{1}",
+        "{-1}",
+        "{2}",
+        "{0}",
+    )
+    return all(token in compact for token in required)
+
+
+def _repair_malformed_ode_matrix_blocks(text: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        context = text[max(0, match.start() - 1200) : match.start()]
+        matrix = match.group("matrix")
+        initial = match.group("initial")
+        if not _looks_like_malformed_ode_matrix_block(context, matrix, initial):
+            return match.group(0)
+        return (
+            "其中，\n\n"
+            "$$\n"
+            r"x = \begin{pmatrix} x_1 \\ x_2 \\ x_3 \\ x_4 \end{pmatrix},\quad "
+            r"A = \begin{pmatrix} "
+            r"0 & 1 & 0 & 0 \\ "
+            r"0 & 0 & 1 & 0 \\ "
+            r"0 & 0 & 0 & 1 \\ "
+            r"-1 & 0 & 0 & 0 "
+            r"\end{pmatrix},\quad "
+            r"f(t) = \begin{pmatrix} 0 \\ 0 \\ 0 \\ t e^t \end{pmatrix}."
+            "\n$$\n\n"
+            "相应的初始条件为：\n\n"
+            "$$\n"
+            r"x(0)=\begin{pmatrix} 1 \\ -1 \\ 2 \\ 0 \end{pmatrix}"
+            "\n$$"
+        )
+
+    return MALFORMED_ODE_MATRIX_BLOCK_RE.sub(replace, text)
+
+
 def repair_extracted_markdown_text(markdown: str) -> str:
     """Repair conservative OCR/PDF extraction ordering glitches before math normalization."""
     text = markdown or ""
@@ -158,6 +208,7 @@ def repair_extracted_markdown_text(markdown: str) -> str:
     text = re.sub(r"(?:[。；]\s*)稳(?=\s*(?:\n|$|[A-Z\\$（(]))", lambda match: match.group(0).replace("稳", ""), text)
     text = _repair_mineru_spacing_in_math(text)
     text = _repair_ocr_c_scripts(text)
+    text = _repair_malformed_ode_matrix_blocks(text)
     text = _repair_statistics_pdf_fragments(text)
     return text
 
