@@ -11,6 +11,11 @@ import { createHead } from "@vueuse/head";
 // import Viewer from "v-viewer";H
 // import "viewerjs/dist/viewer.css";
 
+const apiBaseUrl = (process.env.VUE_APP_API_BASE_URL || "").replace(/\/$/, "");
+if (apiBaseUrl) {
+  axios.defaults.baseURL = apiBaseUrl;
+}
+
 const app = createApp(App);
 const head = createHead();
 
@@ -32,7 +37,7 @@ axiosRetry(axios, {
   retries: 3,
   retryDelay: axiosRetry.exponentialDelay, // 1s → 2s → 4s
   retryCondition: (error) => {
-    if (error.config?.url?.includes('/api/handwriting/extract_source')) {
+    if (error.config?.url?.includes('/api/handwriting/extract_source') || error.config?.url?.includes('/handwriting-api/handwriting/extract_source')) {
       return false;
     }
     // 503 queue_full 是业务状态，不需要重试

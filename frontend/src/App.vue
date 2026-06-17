@@ -17,6 +17,7 @@ import BookSplash from './components/BookSplash.vue';
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useHead } from '@vueuse/head';
+import { assetUrl } from './utils/asset-url';
 
 export default {
   name: 'App',
@@ -34,6 +35,7 @@ export default {
   setup() {
     const route = useRoute();
     const site = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080';
+    const previewImage = assetUrl('scholar-preview.svg');
     const defaultTitle = '作业文档转手写体工作台';
     const defaultDesc = '个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。';
 
@@ -51,12 +53,12 @@ export default {
         { property: 'og:url', content: canonical.value },
         { property: 'og:title', content: title.value },
         { property: 'og:description', content: description.value },
-        { property: 'og:image', content: '/scholar-preview.svg' },
+        { property: 'og:image', content: previewImage },
         { property: 'twitter:card', content: 'summary_large_image' },
         { property: 'twitter:url', content: canonical.value },
         { property: 'twitter:title', content: title.value },
         { property: 'twitter:description', content: description.value },
-        { property: 'twitter:image', content: '/scholar-preview.svg' },
+        { property: 'twitter:image', content: previewImage },
       ],
       link: [
         { rel: 'canonical', href: canonical.value },

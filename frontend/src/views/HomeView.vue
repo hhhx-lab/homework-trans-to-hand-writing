@@ -4,7 +4,7 @@
       <aside class="control-column">
         <header class="workspace-header">
           <div class="brand-lockup">
-            <img src="/scroll-logo.svg" alt="清卷手写工作台" />
+            <img :src="assetUrl('scroll-logo.svg')" alt="清卷手写工作台" />
             <div>
               <p>清卷手写工作台</p>
               <h1>蓝笺成稿，清爽校写</h1>
@@ -208,6 +208,8 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/asset-url';
+
 const SETTINGS_KEYS = [
   'text',
   'fontSize',
@@ -279,7 +281,7 @@ export default {
       isUnderlined: true,
       enableEnglishSpacing: false,
       outputFormat: 'pdf',
-      previewImage: '/scholar-preview.svg',
+      previewImage: assetUrl('scholar-preview.svg'),
       previewImages: [],
       currentPreviewIndex: 0,
       message: '',
@@ -359,6 +361,7 @@ export default {
     }
   },
   methods: {
+    assetUrl,
     async showToast(icon, title, timer) {
       try {
         const { default: Swal } = await import('sweetalert2');
@@ -504,7 +507,7 @@ export default {
     clearImage() {
       this.backgroundImage = null;
       this.selectedImageFileName = '';
-      this.previewImage = '/scholar-preview.svg';
+      this.previewImage = this.assetUrl('scholar-preview.svg');
       if (this.$refs.imageFileInput) {
         this.$refs.imageFileInput.value = null;
       }
@@ -711,7 +714,11 @@ export default {
       return new Promise((resolve, reject) => {
         let isSettled = false;
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const socket = new WebSocket(`${protocol}://${window.location.host}/api/generate_handwriting/ws/${taskId}`);
+        const apiBaseUrl = (process.env.VUE_APP_API_BASE_URL || '').replace(/\/$/, '');
+        const wsBaseUrl = apiBaseUrl
+          ? apiBaseUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
+          : `${protocol}://${window.location.host}`;
+        const socket = new WebSocket(`${wsBaseUrl}/api/generate_handwriting/ws/${taskId}`);
         const timeoutId = setTimeout(() => {
           if (isSettled) return;
           isSettled = true;
@@ -951,7 +958,7 @@ export default {
       this.selectedFontFileName = '';
       this.selectedImageFileName = '';
       this.selectedOption = '1';
-      this.previewImage = '/scholar-preview.svg';
+      this.previewImage = this.assetUrl('scholar-preview.svg');
       this.previewImages = [];
       this.currentPreviewIndex = 0;
       this.message = '设置已重置';

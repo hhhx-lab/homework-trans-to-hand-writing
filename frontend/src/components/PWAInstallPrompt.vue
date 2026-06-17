@@ -2,7 +2,7 @@
   <div v-if="showInstallPrompt" class="pwa-install-prompt">
     <div class="prompt-content">
       <div class="prompt-icon">
-        <img src="/icon.svg" alt="App Icon" width="48" height="48">
+        <img :src="assetUrl('icon.svg')" alt="App Icon" width="48" height="48">
       </div>
       <div class="prompt-text">
         <h3>安装手写生成器</h3>
@@ -17,6 +17,8 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/asset-url';
+
 export default {
   name: 'PWAInstallPrompt',
   data() {
@@ -54,6 +56,7 @@ export default {
     });
   },
   methods: {
+    assetUrl,
     async installApp() {
       if (!this.deferredPrompt) {
         return;

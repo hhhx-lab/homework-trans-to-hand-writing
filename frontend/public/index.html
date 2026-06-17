@@ -14,14 +14,14 @@
     <meta property="og:url" content="http://localhost:8080/">
     <meta property="og:title" content="作业文档转手写体工作台">
     <meta property="og:description" content="个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。">
-    <meta property="og:image" content="/scholar-preview.svg">
+    <meta property="og:image" content="<%= BASE_URL %>scholar-preview.svg">
     <meta property="og:locale" content="zh_CN">
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="http://localhost:8080/">
     <meta property="twitter:title" content="作业文档转手写体工作台">
     <meta property="twitter:description" content="个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。">
-    <meta property="twitter:image" content="/scholar-preview.svg">
+    <meta property="twitter:image" content="<%= BASE_URL %>scholar-preview.svg">
 
     <!-- 结构化数据 JSON-LD -->
     <script type="application/ld+json">
@@ -31,7 +31,7 @@
       "name": "作业文档转手写体工作台",
       "url": "http://localhost:8080/",
       "description": "个人私有的作业文档转手写体工具，支持文档抽取、公式整理、手写预览以及 PDF/Word 导出。",
-      "image": "http://localhost:8080/scholar-preview.svg",
+      "image": "<%= BASE_URL %>scholar-preview.svg",
       "inLanguage": "zh-CN",
       "publisher": {
         "@type": "Organization",
@@ -41,7 +41,7 @@
     </script>
 
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="<%= BASE_URL %>manifest.json">
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="<%= BASE_URL %>icon.svg">

@@ -20,7 +20,7 @@
         <div class="page-face page-face-front">
           <div class="cover-content">
             <div class="cover-icon">
-              <img src="/scroll-logo.svg" alt="清卷手写工作台" class="cover-img" />
+              <img :src="assetUrl('scroll-logo.svg')" alt="清卷手写工作台" class="cover-img" />
             </div>
             <div class="cover-title">手写体工作台</div>
             <div class="cover-divider"></div>
@@ -47,7 +47,7 @@
       <transition name="brand-in">
         <div v-if="showBrand" class="brand-overlay">
           <div class="brand-icon">
-            <img src="/scroll-logo.svg" alt="清卷手写工作台" class="brand-img" />
+            <img :src="assetUrl('scroll-logo.svg')" alt="清卷手写工作台" class="brand-img" />
           </div>
           <div class="brand-name">手写体工作台</div>
           <div class="brand-sub">文档整理与手写导出</div>
@@ -61,6 +61,8 @@
 </template>
 
 <script>
+import { assetUrl } from '@/utils/asset-url';
+
 export default {
   name: 'BookSplash',
   data() {
@@ -93,6 +95,7 @@ mounted() {
     }, 3200);
   },
   methods: {
+    assetUrl,
     skipAnimation() {
       localStorage.setItem('bookSplashShown', '1');
       this.visible = false;
