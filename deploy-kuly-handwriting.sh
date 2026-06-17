@@ -30,12 +30,13 @@ export PATH="${HOME}/.local/bin:${PATH}"
 if [ ! -f .env ]; then
   cat > .env <<ENV
 # Handwriting workbench production placeholder.
-# MinerU is intentionally left as a placeholder until the cloud MinerU service is ready.
-MINERU_BASE_URL=https://mineru.example.com/api/v4
+# MinerU cloud API is configured here for the long-lived production deployment.
+MINERU_BASE_URL=https://mineru.net/api/v4
 MINERU_API_TOKEN=replace-with-cloud-mineru-token
 MINERU_PUBLIC_BASE_URL=${HANDWRITING_SITE_URL}/handwriting-api
 MINERU_MODEL_VERSION=vlm
-MINERU_TRUST_ENV=0
+MINERU_TRUST_ENV=1
+NO_PROXY=
 FONT_ASSETS_DIR=${HANDWRITING_APP_DIR}/ttf_files
 FONT_ASSETS_BUNDLED_DIR=${HANDWRITING_APP_DIR}/ttf_files
 ENV
@@ -76,19 +77,23 @@ WantedBy=multi-user.target
 UNIT
 
 echo "==> Install nginx handwriting routes"
-sudo tee /etc/nginx/conf.d/kuly-handwriting.conf >/dev/null <<NGINX
+sudo rm -f /etc/nginx/conf.d/kuly-handwriting.conf
+sudo tee /etc/nginx/snippets/kuly-handwriting.conf >/dev/null <<NGINX
 location = /handwriting {
     return 301 /handwriting/;
 }
 
+location = /handwriting/index.html {
+    alias ${HANDWRITING_APP_DIR}/frontend/dist/index.html;
+}
+
 location ^~ /handwriting/ {
     alias ${HANDWRITING_APP_DIR}/frontend/dist/;
-    index index.html;
     try_files \$uri \$uri/ /handwriting/index.html;
 }
 
 location ^~ /handwriting-api/ {
-    rewrite ^/handwriting-api/(.*)\$ /api/\$1 break;
+    rewrite ^/handwriting-api/(.*)\$ /\$1 break;
     proxy_pass http://127.0.0.1:5005;
     proxy_http_version 1.1;
     proxy_set_header Host \$host;
@@ -102,14 +107,29 @@ location ^~ /handwriting-api/ {
 }
 NGINX
 
-if ! sudo grep -q 'include /etc/nginx/conf.d/kuly-handwriting.conf;' /etc/nginx/sites-enabled/kuly.conf; then
+sudo chmod o+x /opt/kuly
+
+sudo python3 - <<'PY'
+from pathlib import Path
+
+path = Path("/etc/nginx/sites-enabled/kuly.conf")
+text = path.read_text()
+text = text.replace("    include /etc/nginx/conf.d/kuly-handwriting.conf;\n\n", "")
+needle = "    location /api/ {"
+include_line = "    include /etc/nginx/snippets/kuly-handwriting.conf;\n\n"
+if include_line not in text:
+    text = text.replace(needle, include_line + needle, 1)
+path.write_text(text)
+PY
+
+if ! sudo grep -q 'include /etc/nginx/snippets/kuly-handwriting.conf;' /etc/nginx/sites-enabled/kuly.conf; then
   sudo python3 - <<'PY'
 from pathlib import Path
 
 path = Path("/etc/nginx/sites-enabled/kuly.conf")
 text = path.read_text()
 needle = "    location /api/ {"
-include_line = "    include /etc/nginx/conf.d/kuly-handwriting.conf;\n\n"
+include_line = "    include /etc/nginx/snippets/kuly-handwriting.conf;\n\n"
 if include_line not in text:
     text = text.replace(needle, include_line + needle, 1)
     path.write_text(text)
